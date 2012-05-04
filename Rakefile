@@ -17,8 +17,8 @@ Jeweler::Tasks.new do |gem|
   gem.name = "php_process"
   gem.homepage = "http://github.com/kaspernj/php_process"
   gem.license = "MIT"
-  gem.summary = %Q{TODO: one-line summary of your gem}
-  gem.description = %Q{TODO: longer description of your gem}
+  gem.summary = %Q{Ruby-to-PHP bridge}
+  gem.description = %Q{Spawns a PHP process and proxies calls to it, making it possible to proxy objects and more.}
   gem.email = "k@spernj.org"
   gem.authors = ["Kasper Johansen"]
   # dependencies defined in Gemfile
