@@ -44,7 +44,7 @@ class php_process{
       foreach($data as $key => $val){
         if (is_object($val)){
           $this->objects[$this->objects_count] = $val;
-          $data[$key] = array("type" => "php_process_proxy", "id" => $this->objects_count);
+          $data[$key] = array("type" => "php_process_proxy", "id" => $this->objects_count, "class" => get_class($val));
           $this->objects_count++;
         }
       }
@@ -52,7 +52,7 @@ class php_process{
       return $data;
     }elseif(is_object($data)){
       $this->objects[$this->objects_count] = $val;
-      $ret = array("type" => "php_process_proxy", "id" => $this->objects_count);
+      $ret = array("type" => "php_process_proxy", "id" => $this->objects_count, "class" => get_class($val));
       $this->objects_count++;
       return $ret;
     }else{
@@ -71,14 +71,10 @@ class php_process{
     $new_args = $args["args"];
     
     $klass = new ReflectionClass($class);
-    $thing = $klass->newInstanceArgs($new_args);
-    
-    $this->objects[$this->objects_count] = $thing;
-    $count = $this->objects_count;
-    $this->objects_count++;
+    $object = $klass->newInstanceArgs($new_args);
     
     $this->answer($id, array(
-      "object_id" => $count
+      "object" => $object
     ));
   }
   
@@ -121,7 +117,30 @@ class php_process{
   }
   
   function func($id, $args){
-    $res = call_user_func_array($args["func_name"], $args["args"]);
+    //These functions cant be called normally. Hack them with eval instead.
+    $specials = array("require", "require_once", "include", "include_once");
+    
+    if (in_array($args["func_name"], $specials)){
+      $eval_str = $args["func_name"] . "(";
+      $count = 0;
+      foreach($args["args"] as $key => $val){
+        if (!is_numeric($key)){
+          throw new exception("Invalid key: '" . $key . "'.");
+        }
+        
+        if ($count > 0){
+          $eval_str .= ",";
+        }
+        
+        $eval_str .= "\$args['args'][" . $count . "]";
+        $count++;
+      }
+      $eval_str .= ");";
+      
+      $res = eval($eval_str);
+    }else{
+      $res = call_user_func_array($args["func_name"], $args["args"]);
+    }
     $this->answer($id, array("result" => $res));
   }
   

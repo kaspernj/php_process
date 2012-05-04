@@ -4,7 +4,17 @@ describe "PhpProcess" do
   it "should be able to start" do
     require "timeout"
     
-    $php = Php_process.new(:debug => true)
+    $php = Php_process.new(:debug => false)
+    
+    
+    #Test function calls without arguments.
+    pid = $php.func("getmypid")
+    raise "Invalid PID: #{id}" if pid.to_i <= 0
+    
+    
+    #Test function calls with arguments.
+    res = $php.func("explode", ";", "1;2;4;5")
+    raise "Expected length of result to be 4 but it wasnt: #{res.length}" if res.length != 4
     
     
     #Test eval.
@@ -22,8 +32,8 @@ describe "PhpProcess" do
     
     
     #Test spawn require and method-calling on objects.
-    $php.require_once "knj/http.php"
-    http = $php.new "knj_httpbrowser"
+    $php.func("require_once", "knj/http.php")
+    http = $php.new("knj_httpbrowser")
     http.connect("www.partyworm.dk")
     resp = http.get("/?show=frontpage")
     raise "Expected length of HTML to be longer than 200: #{resp.to_s.length}" if resp.to_s.length < 200
@@ -31,8 +41,8 @@ describe "PhpProcess" do
     
     
     #Test Table-Writer.
-    $php.require_once "knj/table_writer.php"
-    $php.require_once "knj/csv.php"
+    $php.func("require_once", "knj/table_writer.php")
+    $php.func("require_once", "knj/csv.php")
     tw = $php.new("knj_table_writer", {
       "filepath" => "/tmp/php_process_test.csv",
       "format" => "csv",
@@ -42,8 +52,8 @@ describe "PhpProcess" do
     })
     
     
-    #Should be able to write 1000 rows in less than 2 sec.
-    Timeout.timeout(2) do
+    #Should be able to write 1000 rows in less than 5 sec.
+    Timeout.timeout(5) do
       0.upto(1000) do |i|
         tw.write_row(["test#{i}", i, "test#{i}", i.to_f])
       end
@@ -53,24 +63,17 @@ describe "PhpProcess" do
     tw = nil
     
     
-    #Test function calls without arguments.
-    pid = $php.func("getmypid")
-    raise "Expected PIDs to be the same: #{pid}, #{$php.pid}" if pid != $php.pid
-    
-    
-    #Test function calls with arguments.
-    res = $php.func("explode", ";", "1;2;4;5")
-    raise "Expected length of result to be 4 but it wasnt: #{res.length}" if res.length != 4
-    
     
     #Test PHPExcel.
-    $php.require_once("PHPExcel.php")
+    $php.func("require_once", "PHPExcel.php")
     tw = $php.new("knj_table_writer", {
       "filepath" => "/tmp/php_process_test.xlsx",
       "format" => "excel2007"
     })
-    #Should be able to write 1000 rows in less than 2 sec.
-    Timeout.timeout(2) do
+    
+    
+    #Should be able to write 1000 rows in less than 5 sec.
+    Timeout.timeout(5) do
       0.upto(1000) do |i|
         tw.write_row(["test#{i}", i, "test#{i}", i.to_f])
       end
@@ -80,18 +83,21 @@ describe "PhpProcess" do
     tw = nil
     
     
-    #Check garbage collection, cache and stuff.
-    cache_info = $php.object_cache_info
-    print "Cache count: #{cache_info["count"]}\n"
-    GC.start
-    $php.flush_unset_ids(true)
-    cache_info = $php.object_cache_info
-    raise "Cache count should be below 4 but isnt: #{cache_info}." if cache_info["count"] >= 4
-    
-    
     #Try some really advanced object-stuff.
     pe = $php.new("PHPExcel")
-    prop = pe.getProperties
-    prop.setCreator("kaspernj")
+    pe.getProperties.setCreator("kaspernj")
+    pe = nil
+    
+    
+    #Check garbage collection, cache and stuff.
+    cache_info1 = $php.object_cache_info
+    GC.start
+    $php.flush_unset_ids(true)
+    cache_info2 = $php.object_cache_info
+    raise "Cache count should be below #{cache_info1["count"]} but it wasnt: #{cache_info2}." if cache_info2["count"] >= cache_info1["count"]
+    
+    
+    #Destroy the object.
+    $php.destroy
   end
 end
