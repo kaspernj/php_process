@@ -13,7 +13,12 @@ class Php_process
   
   #This object controls which IDs should be unset on the PHP-side by being a destructor on the Ruby-side.
   def objects_unsetter(id)
-    @object_unset_ids << @object_ids[id]
+    obj_count_id = @object_ids[id]
+    
+    if @object_unset_ids.index(obj_count_id) == nil
+      @object_unset_ids << obj_count_id
+    end
+    
     @object_ids.delete(id)
   end
   
@@ -28,6 +33,7 @@ class Php_process
     @responses = Knj::Threadsafe::Synced_hash.new
     @object_ids = Knj::Threadsafe::Synced_hash.new
     @object_unset_ids = Knj::Threadsafe::Synced_array.new
+    @objects = Knj::Wref_map.new
     
     #Used for 'create_func'.
     @callbacks = {}
@@ -132,7 +138,7 @@ class Php_process
   # pe = php.new("PHPExcel")
   # pe.getProperties.setCreator("kaspernj")
   def new(classname, *args)
-    return self.send(:type => :new, :class => classname, :args => parse_data(args))["object"]
+    return self.send(:type => :new, :class => classname, :args => parse_data(args))
   end
   
   #Call a function in PHP.
@@ -141,14 +147,14 @@ class Php_process
   # pid_of_php_process = php.func("getmypid")
   # php.func("require_once", "PHPExcel.php")
   def func(func_name, *args)
-    return self.send(:type => :func, :func_name => func_name, :args => parse_data(args))["result"]
+    return self.send(:type => :func, :func_name => func_name, :args => parse_data(args))
   end
   
   #Sends a call to a static method on a class with given arguments.
   #===Examples
   # php.static("Gtk", "main_quit")
   def static(class_name, method_name, *args)
-    return self.send(:type => :static_method_call, :class_name => class_name, :method_name => method_name, :args => parse_data(args))["result"]
+    return self.send(:type => :static_method_call, :class_name => class_name, :method_name => method_name, :args => parse_data(args))
   end
   
   #Creates a function on the PHP-side. When the function is called, it callbacks to the Ruby-side which then can execute stuff back to PHP.
@@ -183,14 +189,17 @@ class Php_process
       $stderr.print "Sending unsets: #{elements}\n" if @debug
       send_real("type" => "unset_ids", "ids" => elements)
     end
+    
+    #Clean wref-map.
+    @objects.clean
   end
   
   #Parses argument-data into special hashes that can be used on the PHP-side. It is public because the proxy-objects uses it. Normally you would never use it.
   def parse_data(data)
     if data.is_a?(Php_process::Proxy_obj)
-      return {:type => "php_process_proxy", :id => data.args[:id]}
+      return {:type => :proxyobj, :id => data.args[:id]}
     elsif data.is_a?(Php_process::Created_function)
-      return {:type => "php_process_created_function", :id => data.args[:id]}
+      return {:type => :php_process_created_function, :id => data.args[:id]}
     elsif data.is_a?(Hash)
       newhash = {}
       data.each do |key, val|
@@ -212,7 +221,20 @@ class Php_process
   
   #Returns the value of a constant on the PHP-side.
   def constant_val(name)
-    return self.send(:type => :constant_val, :name => name)["result"]
+    return self.send(:type => :constant_val, :name => name)
+  end
+  
+  #Returns various informations about boths sides memory in a hash.
+  def memory_info
+    return {
+      :php_info => self.send(:type => :memory_info),
+      :ruby_info => {
+        :responses => @responses.length,
+        :objects_ids => @object_ids.length,
+        :object_unset_ids => @object_unset_ids.length,
+        :objects => @objects.length
+      }
+    }
   end
   
   private
@@ -248,7 +270,7 @@ class Php_process
       end
       
       check_alive
-      sleep 0.05
+      sleep 0.01
       $stderr.print "Waiting for answer to ID: #{id}\n" if @debug
     end
   end
@@ -261,12 +283,21 @@ class Php_process
   
   #Parses special hashes to proxy-objects and leaves the rest. This is used automatically.
   def read_parsed_data(data)
-    if data.is_a?(Hash) and data["type"] == "php_process_proxy" and data.key?("id")
-      return Proxy_obj.new(
-        :php => self,
-        :id => data["id"].to_i,
-        :class => data["class"].to_sym
-      )
+    if data.is_a?(Array) and data.length == 2 and data[0] == "proxyobj"
+      id = data[1].to_i
+      
+      if proxy_obj = @objects.get!(id)
+        $stderr.print "Reuse proxy-obj!\n" if @debug
+        return proxy_obj
+      else
+        $stderr.print "Spawn new proxy-obj!\n" if @debug
+        proxy_obj = Proxy_obj.new(
+          :php => self,
+          :id => id
+        )
+        @objects[id] = proxy_obj
+        return proxy_obj
+      end
     elsif data.is_a?(Hash)
       newdata = {}
       data.each do |key, val|
@@ -328,7 +359,7 @@ class Php_process::Proxy_obj
   #===Examples
   # proxy_obj.__phpclass #=> :PHPExcel
   def __phpclass
-    return @args[:class]
+    return @args[:php].func("get_class", self)
   end
   
   #Sets an instance-variable on the object.
@@ -347,12 +378,12 @@ class Php_process::Proxy_obj
   # proxy_obj.__set_var("testvar", 5)
   # proxy_obj.__get_var("testvar") #=> 5
   def __get_var(name)
-    return @args[:php].send(:type => "get_var", :id => @args[:id], :name => name)["result"]
+    return @args[:php].send(:type => "get_var", :id => @args[:id], :name => name)
   end
   
   #Uses 'method_missing' to proxy all other calls onto the PHP-process and the PHP-object. Then returns the parsed result.
   def method_missing(method_name, *args)
-    return @args[:php].send(:type => :object_call, :method => method_name, :args => @args[:php].parse_data(args), :id => @args[:id])["result"]
+    return @args[:php].send(:type => :object_call, :method => method_name, :args => @args[:php].parse_data(args), :id => @args[:id])
   end
 end
 

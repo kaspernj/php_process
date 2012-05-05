@@ -6,9 +6,10 @@ class php_process{
     $this->sock_stdin = fopen("php://stdin", "r");
     $this->sock_stdout = fopen("php://stdout", "w");
     $this->objects = array();
+    $this->objects_spl = array();
     $this->objects_count = 0;
     $this->created_functions = array();
-    $this->proxy_to_func = array("call_created_func", "constant_val", "create_func", "func", "get_var", "object_cache_info", "object_call", "require_once_path", "set_var", "static_method_call", "unset_ids");
+    $this->proxy_to_func = array("call_created_func", "constant_val", "create_func", "func", "get_var", "memory_info", "object_cache_info", "object_call", "require_once_path", "set_var", "static_method_call", "unset_ids");
     $this->send_count = 0;
     
     print "php_script_ready:" . getmypid() . "\n";
@@ -65,17 +66,29 @@ class php_process{
     if (is_array($data)){
       foreach($data as $key => $val){
         if (is_object($val)){
-          $this->objects[$this->objects_count] = $val;
-          $data[$key] = array("type" => "php_process_proxy", "id" => $this->objects_count, "class" => get_class($val));
-          $this->objects_count++;
+          $data[$key] = $this->parse_data($val);
         }
       }
       
       return $data;
     }elseif(is_object($data)){
-      $this->objects[$this->objects_count] = $val;
-      $ret = array("type" => "php_process_proxy", "id" => $this->objects_count, "class" => get_class($val));
-      $this->objects_count++;
+      $spl = spl_object_hash($data);
+      
+      if (array_key_exists($spl, $this->objects_spl)){
+        $id = $this->objects_spl[$spl];
+      }else{
+        $id = $this->objects_count;
+        $this->objects_count++;
+        
+        if (array_key_exists($id, $this->objects)){
+          throw new exception("Object with that ID already exists: " . $id);
+        }
+        
+        $this->objects[$id] = array("obj" => $data, "spl" => $spl);
+        $this->objects_spl[$spl] = $id;
+      }
+      
+      $ret = array("proxyobj", $id);
       return $ret;
     }else{
       return $data;
@@ -83,8 +96,8 @@ class php_process{
   }
   
   function read_parsed_data($data){
-    if (is_array($data) and array_key_exists("type", $data) and $data["type"] == "php_process_proxy" and array_key_exists("id", $data)){
-      $object = $this->objects[$data["id"]];
+    if (is_array($data) and array_key_exists("type", $data) and $data["type"] == "proxyobj" and array_key_exists("id", $data)){
+      $object = $this->objects[$data["id"]]["obj"];
       if (!$object){
         throw new exception("No object by that ID: " . $data["id"]);
       }
@@ -117,13 +130,11 @@ class php_process{
     $klass = new ReflectionClass($class);
     $object = $klass->newInstanceArgs($new_args);
     
-    $this->answer($id, array(
-      "object" => $object
-    ));
+    $this->answer($id, $object);
   }
   
   function set_var($id, $args){
-    $object = $this->objects[$args["id"]];
+    $object = $this->objects[$args["id"]]["obj"];
     if (!$object){
       throw new exception("No object by that ID: " . $args["id"]);
     }
@@ -133,23 +144,20 @@ class php_process{
   }
   
   function get_var($id, $args){
-    $object = $this->objects[$args["id"]];
+    $object = $this->objects[$args["id"]]["obj"];
     if (!$object){
       throw new exception("No object by that ID: " . $args["id"]);
     }
     
-    $this->answer($id, array(
-      "result" => $object->$args["name"]
-    ));
-  }
-  
-  function require_once_path($id, $args){
-    require_once $args["filepath"];
-    $this->answer($id, true);
+    $this->answer($id, $object->$args["name"]);
   }
   
   function object_call($id, $args){
-    $object = $this->objects[$args["id"]];
+    if (!array_key_exists($args["id"], $this->objects)){
+      throw new exception("No object by that ID: " . $args["id"]);
+    }
+    
+    $object = $this->objects[$args["id"]]["obj"];
     $call_arr = array($object, $args["method"]);
     
     //Error handeling.
@@ -162,9 +170,7 @@ class php_process{
     }
     
     $res = call_user_func_array($call_arr, $this->read_parsed_data($args["args"]));
-    $this->answer($id, array(
-      "result" => $res
-    ));
+    $this->answer($id, $res);
   }
   
   function func($id, $args){
@@ -194,11 +200,22 @@ class php_process{
       $res = call_user_func_array($args["func_name"], $newargs);
     }
     
-    $this->answer($id, array("result" => $res));
+    $this->answer($id, $res);
   }
   
   function unset_ids($id, $args){
     foreach($args["ids"] as $obj_id){
+      if (!array_key_exists($obj_id, $this->objects)){
+        continue;
+      }
+      
+      $spl = $this->objects[$obj_id]["spl"];
+      
+      if (!array_key_exists($spl, $this->objects_spl)){
+        throw new exception("SPL could not be found: " . $spl);
+      }
+      
+      unset($this->objects_spl[$spl]);
       unset($this->objects[$obj_id]);
     }
     
@@ -235,9 +252,7 @@ class php_process{
     $newargs = $this->read_parsed_data($args["args"]);
     $res = call_user_func_array($call_arr, $newargs);
     
-    $this->answer($id, array(
-      "result" => $res
-    ));
+    $this->answer($id, $res);
   }
   
   function create_func($id, $args){
@@ -279,12 +294,18 @@ class php_process{
     
     $eval_str .= ");";
     $res = eval($eval_str);
-    $this->answer($id, array("result" => $res));
+    $this->answer($id, $res);
   }
   
   function constant_val($id, $args){
+    $this->answer($id, constant($args["name"]));
+  }
+  
+  function memory_info($id, $args){
     $this->answer($id, array(
-      "result" => constant($args["name"])
+      "objects" => count($this->objects),
+      "objects_spl" => count($this->objects_spl),
+      "created_functions" => count($this->created_functions)
     ));
   }
 }
