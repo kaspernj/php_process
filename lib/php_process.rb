@@ -50,12 +50,12 @@ class Php_process
     
     @err_thread = Knj::Thread.new do
       @stderr.each_line do |str|
+        @args[:on_err].call(str) if @args[:on_err]
+        $stderr.print "Process error: #{str}" if @debug or @args[:debug_stderr]
+        
         if str.match(/^PHP Fatal error: (.+)\s+/)
           @fatal = str.strip
         end
-        
-        @args[:on_err].call(str) if @args[:on_err]
-        $stderr.print "Process error: #{str}" if @debug or @args[:debug_stderr]
       end
     end
     
@@ -75,6 +75,14 @@ class Php_process
     
     $stderr.print "PHP-script ready.\n" if @debug
     start_read_loop
+    
+    if block_given?
+      begin
+        yield(self)
+      ensure
+        self.destroy
+      end
+    end
   end
   
   #Returns various info in a hash about the object-cache on the PHP-side.
@@ -212,7 +220,7 @@ class Php_process
   #Generates the command from the given object and sends it to the PHP-process. Then returns the parsed result.
   def send_real(hash)
     $stderr.print "Sending: #{hash}\n" if @debug
-    str = Base64.strict_encode64(PHP.serialize(hash))
+    str = Base64.strict_encode64(PHP.serialize(hash).encode("iso8859-1"))
     @stdin.write("send:#{@send_count}:#{str}\n")
     id = @send_count
     @send_count += 1
@@ -235,6 +243,7 @@ class Php_process
           raise "#{resp["msg"]}\n\n#{resp["bt"]}"
         end
         
+        $stderr.print "Found answer #{id} - returning it.\n" if @debug
         return read_parsed_data(resp)
       end
       

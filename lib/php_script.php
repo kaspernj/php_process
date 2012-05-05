@@ -37,6 +37,9 @@ class php_process{
     $type = $data[0];
     $id = intval($data[1]);
     $args = unserialize(base64_decode($data[2]));
+    if ($args === false){
+      throw new exception("The args-data was not unserializeable: " . utf8_encode(base64_decode($data[2])));
+    }
     
     try{
       if ($type == "send"){
@@ -48,7 +51,7 @@ class php_process{
         }elseif(in_array($args["type"], $this->proxy_to_func)){
           $this->$args["type"]($id, $args);
         }else{
-          throw new exception("Unknown send-type: " . $args["type"]);
+          throw new exception("Unknown send-type: " . $args["type"] . " (" . implode(", ", array_keys($args)) . ") (" . base64_decode($data[2]) . ")");
         }
       }else{
         throw new exception("Invalid type: " . $type);
@@ -80,14 +83,14 @@ class php_process{
   }
   
   function read_parsed_data($data){
-    if (is_array($data) and array_key_exists("type", $data) and $data["type"] == "php_process_proxy" and array_key_exists("id", $data) and $data["id"]){
+    if (is_array($data) and array_key_exists("type", $data) and $data["type"] == "php_process_proxy" and array_key_exists("id", $data)){
       $object = $this->objects[$data["id"]];
       if (!$object){
         throw new exception("No object by that ID: " . $data["id"]);
       }
       
       return $object;
-    }elseif(is_array($data) and array_key_exists("type", $data) and $data["type"] == "php_process_created_function" and array_key_exists("id", $data) and $data["id"]){
+    }elseif(is_array($data) and array_key_exists("type", $data) and $data["type"] == "php_process_created_function" and array_key_exists("id", $data)){
       $func = $this->created_functions[$data["id"]]["func"];
       return $func;
     }elseif(is_array($data)){
@@ -230,7 +233,6 @@ class php_process{
     }
     
     $newargs = $this->read_parsed_data($args["args"]);
-    error_log("Args: " . print_r($newargs, true));
     $res = call_user_func_array($call_arr, $newargs);
     
     $this->answer($id, array(
