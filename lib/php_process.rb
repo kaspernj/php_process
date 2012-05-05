@@ -29,6 +29,11 @@ class Php_process
     @object_ids = Knj::Threadsafe::Synced_hash.new
     @object_unset_ids = Knj::Threadsafe::Synced_array.new
     
+    #Used for 'create_func'.
+    @callbacks = {}
+    @callbacks_count = 0
+    @callbacks_mutex = Mutex.new
+    
     cmd_str = "/usr/bin/env php5 \"#{File.dirname(__FILE__)}/php_script.php\""
     
     if RUBY_ENGINE == "jruby"
@@ -50,7 +55,7 @@ class Php_process
         end
         
         @args[:on_err].call(str) if @args[:on_err]
-        $stderr.print "Process error: #{str}" if @debug
+        $stderr.print "Process error: #{str}" if @debug or @args[:debug_stderr]
       end
     end
     
@@ -119,7 +124,7 @@ class Php_process
   # pe = php.new("PHPExcel")
   # pe.getProperties.setCreator("kaspernj")
   def new(classname, *args)
-    return self.send(:type => :new, :class => classname, :args => args)["object"]
+    return self.send(:type => :new, :class => classname, :args => parse_data(args))["object"]
   end
   
   #Call a function in PHP.
@@ -128,7 +133,37 @@ class Php_process
   # pid_of_php_process = php.func("getmypid")
   # php.func("require_once", "PHPExcel.php")
   def func(func_name, *args)
-    return self.send(:type => :func, :func_name => func_name, :args => args)["result"]
+    return self.send(:type => :func, :func_name => func_name, :args => parse_data(args))["result"]
+  end
+  
+  #Sends a call to a static method on a class with given arguments.
+  #===Examples
+  # php.static("Gtk", "main_quit")
+  def static(class_name, method_name, *args)
+    return self.send(:type => :static_method_call, :class_name => class_name, :method_name => method_name, :args => parse_data(args))["result"]
+  end
+  
+  #Creates a function on the PHP-side. When the function is called, it callbacks to the Ruby-side which then can execute stuff back to PHP.
+  #===Examples
+  # func = php.create_func do |d|
+  #   d.php.static("Gtk", "main_quit")
+  # end
+  #
+  # button.connect("clicked", func)
+  def create_func(args = {}, &block)
+    callback_id = nil
+    func = nil
+    @callbacks_mutex.synchronize do
+      callback_id = @callbacks_count
+      func = Php_process::Created_function.new(:php => self, :id => callback_id)
+      @callbacks[callback_id] = {:block => block, :func => func, :id => callback_id}
+      @callbacks_count += 1
+    end
+    
+    raise "No callback-ID?" if !callback_id
+    self.send(:type => :create_func, :callback_id => callback_id)
+    
+    return func
   end
   
   #This flushes the unset IDs to the PHP-process and frees memory. This is automatically called if 500 IDs are waiting to be flushed. Normally you would not need or have to call this manually.
@@ -140,6 +175,36 @@ class Php_process
       $stderr.print "Sending unsets: #{elements}\n" if @debug
       send_real("type" => "unset_ids", "ids" => elements)
     end
+  end
+  
+  #Parses argument-data into special hashes that can be used on the PHP-side. It is public because the proxy-objects uses it. Normally you would never use it.
+  def parse_data(data)
+    if data.is_a?(Php_process::Proxy_obj)
+      return {:type => "php_process_proxy", :id => data.args[:id]}
+    elsif data.is_a?(Php_process::Created_function)
+      return {:type => "php_process_created_function", :id => data.args[:id]}
+    elsif data.is_a?(Hash)
+      newhash = {}
+      data.each do |key, val|
+        newhash[key] = parse_data(val)
+      end
+      
+      return newhash
+    elsif data.is_a?(Array)
+      newarr = []
+      data.each do |val|
+        newarr << parse_data(val)
+      end
+      
+      return newarr
+    else
+      return data
+    end
+  end
+  
+  #Returns the value of a constant on the PHP-side.
+  def constant_val(name)
+    return self.send(:type => :constant_val, :name => name)["result"]
   end
   
   private
@@ -217,6 +282,13 @@ class Php_process
         
         if type == "answer"
           @responses[id] = args
+        elsif type == "send"
+          if args["type"] == "call_back_created_func"
+            Knj::Thread.new do
+              func_d = @callbacks[args["func_id"].to_i]
+              func_d[:block].call(*args["args"])
+            end
+          end
         else
           raise "Unknown type: '#{type}'."
         end
@@ -231,6 +303,9 @@ end
 # pe = php.new("PHPExcel")
 # pe.getProperties.setCreator("kaspernj")
 class Php_process::Proxy_obj
+  #Contains the various data about the object like ID and class. It is readable because it needs to be converted to special hashes when used as arguments.
+  attr_reader :args
+  
   #Sets required instance-variables and defines the finalizer for unsetting on the PHP-side.
   def initialize(args)
     @args = args
@@ -268,6 +343,33 @@ class Php_process::Proxy_obj
   
   #Uses 'method_missing' to proxy all other calls onto the PHP-process and the PHP-object. Then returns the parsed result.
   def method_missing(method_name, *args)
-    return @args[:php].send(:type => :object_call, :method => method_name, :args => args, :id => @args[:id])["result"]
+    return @args[:php].send(:type => :object_call, :method => method_name, :args => @args[:php].parse_data(args), :id => @args[:id])["result"]
+  end
+end
+
+#This class handels the ability to create functions on the PHP-side.
+#===Examples
+# $callback_from_php = "test"
+# func = php.create_func do |arg|
+#   $callback_from_php = arg
+# end
+#
+# $callback_from_php #=> "test"
+# func.call('test2')
+# $callback_from_php #=> "test2"
+#
+# The function could also be called from PHP, but for debugging purposes it can also be done from Ruby.
+class Php_process::Created_function
+  #Various data about the create function will can help identify it on both the Ruby and PHP-side.
+  attr_reader :args
+  
+  #Sets the data. This is done from "Php_process" automatically.
+  def initialize(args)
+    @args = args
+  end
+  
+  #Asks PHP to execute the function on the PHP-side, which will trigger the callback in Ruby afterwards. This method is useually called for debugging purposes.
+  def call(*args)
+    @args[:php].send(:type => :call_created_func, :id => @args[:id], :args => @args[:php].parse_data(args))
   end
 end

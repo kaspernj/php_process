@@ -4,12 +4,14 @@ describe "PhpProcess" do
   it "should be able to start" do
     require "timeout"
     
-    $php = Php_process.new(:debug => false)
+    
+    #Spawn PHP-process.
+    $php = Php_process.new(:debug => false, :debug_stderr => true)
     
     
     #Test function calls without arguments.
     pid = $php.func("getmypid")
-    raise "Invalid PID: #{id}" if pid.to_i <= 0
+    raise "Invalid PID: #{pid}" if pid.to_i <= 0
     
     
     #Test function calls with arguments.
@@ -55,7 +57,7 @@ describe "PhpProcess" do
     #Should be able to write 1000 rows in less than 5 sec.
     Timeout.timeout(5) do
       0.upto(1000) do |i|
-        tw.write_row(["test#{i}", i, "test#{i}", i.to_f])
+        #tw.write_row(["test#{i}", i, "test#{i}", i.to_f])
       end
     end
     
@@ -75,7 +77,7 @@ describe "PhpProcess" do
     #Should be able to write 1000 rows in less than 5 sec.
     Timeout.timeout(5) do
       0.upto(1000) do |i|
-        tw.write_row(["test#{i}", i, "test#{i}", i.to_f])
+        #tw.write_row(["test#{i}", i, "test#{i}", i.to_f])
       end
     end
     
@@ -86,7 +88,50 @@ describe "PhpProcess" do
     #Try some really advanced object-stuff.
     pe = $php.new("PHPExcel")
     pe.getProperties.setCreator("kaspernj")
+    pe.setActiveSheetIndex(0)
+    
+    sheet = pe.getActiveSheet
+    
+    const_border_thick = $php.constant_val("PHPExcel_Style_Border::BORDER_THICK")
+    
+    sheet.getStyle("A1:C1").getBorders.getTop.setBorderStyle(const_border_thick)
+    sheet.getStyle("A1:A5").getBorders.getLeft.setBorderStyle(const_border_thick)
+    sheet.getStyle("A5:C5").getBorders.getBottom.setBorderStyle(const_border_thick)
+    sheet.getStyle("C1:C5").getBorders.getRight.setBorderStyle(const_border_thick)
+    
+    sheet.setCellValue("A1", "Kasper Johansen")
+    sheet.getStyle("A1").getFont.setBold(true)
+    
+    writer = $php.new("PHPExcel_Writer_Excel2007", pe)
+    writer.save("/tmp/test_excel.xlsx")
+    
     pe = nil
+    sheet = nil
+    writer = nil
+    
+    
+    #Try to play a little with GTK2-extension.
+    $php.func("dl", "php_gtk2.so")
+    win = $php.new("GtkWindow")
+    win.set_title("Test")
+    
+    button = $php.new("GtkButton")
+    button.set_label("Weee!")
+    
+    win.add(button)
+    win.show_all
+    #$php.static("Gtk", "main")
+    
+    
+    #Test ability to create functions and do callbacks.
+    $callback_from_php = "test"
+    func = $php.create_func do |arg|
+      $callback_from_php = arg
+    end
+    
+    #Send argument 'kasper' which will be what "$callback_from_php" will be changed to.
+    func.call("kasper")
+    raise "Expected callback from PHP to change variable but it didnt: '#{$callback_from_php}'." if $callback_from_php != "kasper"
     
     
     #Check garbage collection, cache and stuff.
