@@ -39,7 +39,7 @@ class php_process{
     $id = intval($data[1]);
     $args = unserialize(base64_decode($data[2]));
     if ($args === false){
-      throw new exception("The args-data was not unserializeable: " . utf8_encode(base64_decode($data[2])));
+      throw new exception("The args-data was not unserializeable: " . base64_decode($data[2]));
     }
     
     try{
