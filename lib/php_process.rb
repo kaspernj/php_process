@@ -61,9 +61,13 @@ class Php_process
         @args[:on_err].call(str) if @args[:on_err]
         $stderr.print "Process error: #{str}" if @debug or @args[:debug_stderr]
         
-        if str.match(/^PHP Fatal error: (.+)\s+/)
+        if str.match(/^PHP Fatal error: (.+)\s*/)
           @fatal = str.strip
+        elsif str.match(/^Killed\s*$/)
+          @fatal = "Process was killed."
         end
+        
+        break if (!@args and str.to_s.strip.length <= 0) or (@stderr and @stderr.closed?)
       end
     end
     
@@ -316,6 +320,8 @@ class Php_process
   def start_read_loop
     @thread = Knj::Thread.new do
       @stdout.lines do |line|
+        break if line == nil or @stdout.closed?
+        
         data = line.split(":")
         args = PHP.unserialize(Base64.strict_decode64(data[2].strip))
         type = data[0]
