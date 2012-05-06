@@ -2,8 +2,8 @@ source "http://rubygems.org"
 # Add dependencies required to use your gem here.
 # Example:
 #   gem "activesupport", ">= 2.3.5"
-gem "knjrbfw"
-gem "php-serialize"
+gem "knjrbfw", ">= 0.0.31"
+gem "php-serialize4ruby"
 
 # Add dependencies to develop your gem here.
 # Include everything needed to run rake, tests, features, etc.

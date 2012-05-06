@@ -1,6 +1,7 @@
 require "knjrbfw"
+require "knj/wref"
 require "base64"
-require "php_serialize"
+require "php-serialize4ruby"
 
 #This class starts a PHP-process and proxies various calls to it. It also spawns proxy-objects, which can you can call like they were normal Ruby-objects.
 #===Examples
@@ -51,8 +52,9 @@ class Php_process
     @stdout.sync = true
     @stdin.sync = true
     
-    @stderr.set_encoding("iso-8859-1")
-    @stdout.set_encoding("iso-8859-1")
+    @stdin.set_encoding("iso-8859-1:utf-8")
+    @stderr.set_encoding("utf-8:iso-8859-1")
+    @stdout.set_encoding("utf-8:iso-8859-1")
     
     @err_thread = Knj::Thread.new do
       @stderr.each_line do |str|
@@ -241,8 +243,8 @@ class Php_process
   
   #Generates the command from the given object and sends it to the PHP-process. Then returns the parsed result.
   def send_real(hash)
-    #$stderr.print "Sending: #{hash[:args]}\n" if hash[:args]#if @debug
-    str = Base64.strict_encode64(PHP.serialize(hash).encode("iso8859-1"))
+    $stderr.print "Sending: #{hash[:args]}\n" if @debug and hash[:args]
+    str = Base64.strict_encode64(PHP.serialize(hash))
     @stdin.write("send:#{@send_count}:#{str}\n")
     id = @send_count
     @send_count += 1

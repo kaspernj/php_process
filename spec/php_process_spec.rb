@@ -1,3 +1,5 @@
+# coding: utf-8
+
 require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 
 describe "PhpProcess" do
@@ -12,6 +14,13 @@ describe "PhpProcess" do
     #Test function calls without arguments.
     pid = $php.func("getmypid")
     raise "Invalid PID: #{pid}" if pid.to_i <= 0
+    
+    
+    #Test encoding.
+    test_str = "æøå"
+    $php.func("file_put_contents", "/tmp/php_process_test_encoding", test_str)
+    test_str_read = File.read("/tmp/php_process_test_encoding")
+    raise "Expected the two strings to be the same, but they werent: '#{test_str}', '#{test_str_read}'." if test_str != test_str_read
     
     
     #Test function calls with arguments.
@@ -99,7 +108,7 @@ describe "PhpProcess" do
     sheet.getStyle("A5:C5").getBorders.getBottom.setBorderStyle(const_border_thick)
     sheet.getStyle("C1:C5").getBorders.getRight.setBorderStyle(const_border_thick)
     
-    sheet.setCellValue("A1", "Kasper Johansen")
+    sheet.setCellValue("A1", "Kasper Johansen - æøå")
     sheet.getStyle("A1").getFont.setBold(true)
     
     writer = $php.new("PHPExcel_Writer_Excel2007", pe)
