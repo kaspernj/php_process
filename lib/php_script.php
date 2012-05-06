@@ -42,6 +42,8 @@ class php_process{
       throw new exception("The args-data was not unserializeable: " . utf8_encode(base64_decode($data[2])));
     }
     
+    //error_log("Args: " . implode("-", $args["args"]));
+    
     try{
       if ($type == "send"){
         if ($args["type"] == "eval"){

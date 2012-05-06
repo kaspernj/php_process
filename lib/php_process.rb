@@ -51,8 +51,8 @@ class Php_process
     @stdout.sync = true
     @stdin.sync = true
     
-    @stdout.autoclose = true
-    @stdin.autoclose = true
+    @stderr.set_encoding("iso-8859-1")
+    @stdout.set_encoding("iso-8859-1")
     
     @err_thread = Knj::Thread.new do
       @stderr.each_line do |str|
@@ -241,7 +241,7 @@ class Php_process
   
   #Generates the command from the given object and sends it to the PHP-process. Then returns the parsed result.
   def send_real(hash)
-    $stderr.print "Sending: #{hash}\n" if @debug
+    #$stderr.print "Sending: #{hash[:args]}\n" if hash[:args]#if @debug
     str = Base64.strict_encode64(PHP.serialize(hash).encode("iso8859-1"))
     @stdin.write("send:#{@send_count}:#{str}\n")
     id = @send_count
