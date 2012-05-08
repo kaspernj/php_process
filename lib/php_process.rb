@@ -2,6 +2,7 @@ require "knjrbfw"
 require "knj/wref"
 require "base64"
 require "php-serialize4ruby"
+require "open3"
 
 #This class starts a PHP-process and proxies various calls to it. It also spawns proxy-objects, which can you can call like they were normal Ruby-objects.
 #===Examples
@@ -41,7 +42,13 @@ class Php_process
     @callbacks_count = 0
     @callbacks_mutex = Mutex.new
     
-    cmd_str = "/usr/bin/env php5 \"#{File.dirname(__FILE__)}/php_script.php\""
+    if @args[:cmd_php]
+      cmd_str = "#{@args[:cmd_php]} "
+    else
+      cmd_str = "/usr/bin/env php5 "
+    end
+    
+    cmd_str << "\"#{File.dirname(__FILE__)}/php_script.php\""
     
     if RUBY_ENGINE == "jruby"
       pid, @stdin, @stdout, @stderr = IO.popen4(cmd_str)

@@ -49,3 +49,5 @@ pkg
 #*.rbc
 
 Gemfile.lock
+examples/PHPExcel
+examples/example_phpexcel.xlsx
