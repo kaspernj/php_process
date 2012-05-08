@@ -10,6 +10,7 @@ class php_process{
     $this->objects_count = 0;
     $this->created_functions = array();
     $this->proxy_to_func = array("call_created_func", "constant_val", "create_func", "func", "get_var", "memory_info", "object_cache_info", "object_call", "require_once_path", "set_var", "static_method_call", "unset_ids");
+    $this->func_specials = array("constant", "define", "die", "exit", "require", "require_once", "include", "include_once");
     $this->send_count = 0;
     
     print "php_script_ready:" . getmypid() . "\n";
@@ -175,10 +176,10 @@ class php_process{
   
   function func($id, $args){
     //These functions cant be called normally. Hack them with eval instead.
-    $specials = array("constant", "define", "die", "exit", "require", "require_once", "include", "include_once");
+    
     $newargs = $this->read_parsed_data($args["args"]);
     
-    if (in_array($args["func_name"], $specials)){
+    if (in_array($args["func_name"], $this->func_specials)){
       $eval_str = $args["func_name"] . "(";
       $count = 0;
       foreach($newargs as $key => $val){
