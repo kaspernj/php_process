@@ -5,11 +5,11 @@
 
 Gem::Specification.new do |s|
   s.name = %q{php_process}
-  s.version = "0.0.5"
+  s.version = "0.0.6"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Kasper Johansen"]
-  s.date = %q{2012-05-06}
+  s.date = %q{2012-05-08}
   s.description = %q{Spawns a PHP process and proxies calls to it, making it possible to proxy objects and more.}
   s.email = %q{k@spernj.org}
   s.extra_rdoc_files = [
@@ -24,6 +24,7 @@ Gem::Specification.new do |s|
     "README.rdoc",
     "Rakefile",
     "VERSION",
+    "examples/example_phpexcel.rb",
     "lib/php_process.rb",
     "lib/php_script.php",
     "php_process.gemspec",
