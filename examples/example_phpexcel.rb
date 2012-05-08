@@ -23,7 +23,7 @@ objPHPExcel.getProperties.setDescription("Test document for Office 2007 XLSX, ge
 
 #Add some data
 print "#{Time.now} Add some data\n"
-objPHPExcel.setActiveSheetIndex(0);
+objPHPExcel.setActiveSheetIndex(0)
 objPHPExcel.getActiveSheet.SetCellValue('A1', 'Hello')
 objPHPExcel.getActiveSheet.SetCellValue('B2', 'world!')
 objPHPExcel.getActiveSheet.SetCellValue('C1', 'Hello')
