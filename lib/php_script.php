@@ -175,7 +175,7 @@ class php_process{
   
   function func($id, $args){
     //These functions cant be called normally. Hack them with eval instead.
-    $specials = array("die", "exit", "require", "require_once", "include", "include_once");
+    $specials = array("constant", "define", "die", "exit", "require", "require_once", "include", "include_once");
     $newargs = $this->read_parsed_data($args["args"]);
     
     if (in_array($args["func_name"], $specials)){

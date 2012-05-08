@@ -11,6 +11,17 @@ describe "PhpProcess" do
     $php = Php_process.new(:debug => false, :debug_stderr => true)
     
     
+    #It should be able to handle constants very fast by using cache.
+    $php.func("define", "TEST_CONSTANT", 5)
+    
+    Timeout.timeout(1) do
+      0.upto(10000) do
+        const = $php.constant_val("TEST_CONSTANT")
+        raise "Expected const to be 5 but it wasnt: #{const}." if const != 5
+      end
+    end
+    
+    
     #Test function calls without arguments.
     pid = $php.func("getmypid")
     raise "Invalid PID: #{pid}" if pid.to_i <= 0
@@ -73,8 +84,7 @@ describe "PhpProcess" do
     tw.close
     tw = nil
     
-    
-    
+        
     #Test PHPExcel.
     $php.func("require_once", "PHPExcel.php")
     tw = $php.new("knj_table_writer", {

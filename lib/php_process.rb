@@ -32,10 +32,14 @@ class Php_process
     @args = args
     @debug = @args[:debug]
     @send_count = 0
+    
     @responses = Knj::Threadsafe::Synced_hash.new
+    
     @object_ids = Knj::Threadsafe::Synced_hash.new
     @object_unset_ids = Knj::Threadsafe::Synced_array.new
     @objects = Knj::Wref_map.new
+    
+    @constant_val_cache = Knj::Threadsafe::Synced_hash.new
     
     #Used for 'create_func'.
     @callbacks = {}
@@ -234,7 +238,13 @@ class Php_process
   
   #Returns the value of a constant on the PHP-side.
   def constant_val(name)
-    return self.send(:type => :constant_val, :name => name)
+    const_name = name.to_s
+    
+    if !@constant_val_cache.key?(const_name)
+      @constant_val_cache[const_name] = self.send(:type => :constant_val, :name => name)
+    end
+    
+    return @constant_val_cache[const_name]
   end
   
   #Returns various informations about boths sides memory in a hash.
