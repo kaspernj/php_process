@@ -13,6 +13,7 @@ describe "PhpProcess" do
     
     #It should be able to handle constants very fast by using cache.
     $php.func("define", "TEST_CONSTANT", 5)
+    raise "Expected 'TEST_CONSTANT'-constant to exist but it didnt." if !$php.func("defined", "TEST_CONSTANT")
     
     Timeout.timeout(1) do
       0.upto(10000) do
