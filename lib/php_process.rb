@@ -37,7 +37,7 @@ class Php_process
     
     @object_ids = Knj::Threadsafe::Synced_hash.new
     @object_unset_ids = Knj::Threadsafe::Synced_array.new
-    @objects = Knj::Wref_map.new
+    @objects = Wref_map.new
     
     @constant_val_cache = Knj::Threadsafe::Synced_hash.new
     
