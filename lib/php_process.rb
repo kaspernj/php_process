@@ -1,7 +1,7 @@
-require "knjrbfw"
-require "knj/wref"
-require "base64"
+require "wref"
+require "tsafe"
 require "php-serialize4ruby"
+require "base64"
 require "open3"
 
 #This class starts a PHP-process and proxies various calls to it. It also spawns proxy-objects, which can you can call like they were normal Ruby-objects.
@@ -33,13 +33,13 @@ class Php_process
     @debug = @args[:debug]
     @send_count = 0
     
-    @responses = Knj::Threadsafe::Synced_hash.new
+    @responses = Tsafe::MonHash.new
     
-    @object_ids = Knj::Threadsafe::Synced_hash.new
-    @object_unset_ids = Knj::Threadsafe::Synced_array.new
+    @object_ids = Tsafe::MonHash.new
+    @object_unset_ids = Tsafe::MonArray.new
     @objects = Wref_map.new
     
-    @constant_val_cache = Knj::Threadsafe::Synced_hash.new
+    @constant_val_cache = Tsafe::MonHash.new
     
     #Used for 'create_func'.
     @callbacks = {}
