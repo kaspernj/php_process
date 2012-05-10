@@ -2,9 +2,9 @@ source "http://rubygems.org"
 # Add dependencies required to use your gem here.
 # Example:
 #   gem "activesupport", ">= 2.3.5"
-gem "knjrbfw", ">= 0.0.31"
 gem "php-serialize4ruby"
 gem "wref"
+gem "tsafe"
 
 # Add dependencies to develop your gem here.
 # Include everything needed to run rake, tests, features, etc.
