@@ -67,18 +67,23 @@ class Php_process
     @stderr.set_encoding("utf-8:iso-8859-1")
     @stdout.set_encoding("utf-8:iso-8859-1")
     
-    @err_thread = Knj::Thread.new do
-      @stderr.each_line do |str|
-        @args[:on_err].call(str) if @args[:on_err]
-        $stderr.print "Process error: #{str}" if @debug or @args[:debug_stderr]
-        
-        if str.match(/^PHP Fatal error: (.+)\s*/)
-          @fatal = str.strip
-        elsif str.match(/^Killed\s*$/)
-          @fatal = "Process was killed."
+    @err_thread = Thread.new do
+      begin
+        @stderr.each_line do |str|
+          @args[:on_err].call(str) if @args[:on_err]
+          $stderr.print "Process error: #{str}" if @debug or @args[:debug_stderr]
+          
+          if str.match(/^PHP Fatal error: (.+)\s*/)
+            @fatal = str.strip
+          elsif str.match(/^Killed\s*$/)
+            @fatal = "Process was killed."
+          end
+          
+          break if (!@args and str.to_s.strip.length <= 0) or (@stderr and @stderr.closed?)
         end
-        
-        break if (!@args and str.to_s.strip.length <= 0) or (@stderr and @stderr.closed?)
+      rescue => e
+        $stderr.puts e.inspect
+        $stderr.puts e.backtrace
       end
     end
     
@@ -335,28 +340,38 @@ class Php_process
   
   #Starts the thread which reads answers from the PHP-process. This is called automatically from the constructor.
   def start_read_loop
-    @thread = Knj::Thread.new do
-      @stdout.lines do |line|
-        break if line == nil or @stdout.closed?
-        
-        data = line.split(":")
-        args = PHP.unserialize(Base64.strict_decode64(data[2].strip))
-        type = data[0]
-        id = data[1].to_i
-        $stderr.print "Received: #{id}:#{type}:#{args}\n" if @debug
-        
-        if type == "answer"
-          @responses[id] = args
-        elsif type == "send"
-          if args["type"] == "call_back_created_func"
-            Knj::Thread.new do
-              func_d = @callbacks[args["func_id"].to_i]
-              func_d[:block].call(*args["args"])
+    @thread = Thread.new do
+      begin
+        @stdout.lines do |line|
+          break if line == nil or @stdout.closed?
+          
+          data = line.split(":")
+          args = PHP.unserialize(Base64.strict_decode64(data[2].strip))
+          type = data[0]
+          id = data[1].to_i
+          $stderr.print "Received: #{id}:#{type}:#{args}\n" if @debug
+          
+          if type == "answer"
+            @responses[id] = args
+          elsif type == "send"
+            if args["type"] == "call_back_created_func"
+              Thread.new do
+                begin
+                  func_d = @callbacks[args["func_id"].to_i]
+                  func_d[:block].call(*args["args"])
+                rescue => e
+                  $stderr.puts e.inspect
+                  $stderr.puts e.backtrace
+                end
+              end
             end
+          else
+            raise "Unknown type: '#{type}'."
           end
-        else
-          raise "Unknown type: '#{type}'."
         end
+      rescue => e
+        $stderr.puts e.inspect
+        $stderr.puts e.backtrace
       end
     end
   end
