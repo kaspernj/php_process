@@ -1,5 +1,5 @@
-require "wref"
-require "tsafe"
+require "wref" if !Kernel.const_defined?(:Wref)
+require "tsafe" if !Kernel.const_defined?(:Tsafe)
 require "php-serialize4ruby"
 require "base64"
 require "open3"
