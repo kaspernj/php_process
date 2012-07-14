@@ -64,7 +64,7 @@ class Php_process
     @stdin.sync = true
     
     @stdin.set_encoding("iso-8859-1:utf-8")
-    @stderr.set_encoding("utf-8:iso-8859-1")
+    #@stderr.set_encoding("utf-8:iso-8859-1")
     @stdout.set_encoding("utf-8:iso-8859-1")
     
     @err_thread = Thread.new do
