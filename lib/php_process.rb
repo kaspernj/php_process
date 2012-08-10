@@ -10,6 +10,11 @@ require "open3"
 # print "PID of PHP-process: #{php.func("getmypid")}\n"
 # print "Explode test: #{php.func("explode", ";", "1;2;3;4;5")}\n"
 class Php_process
+  #Returns the path to the gem.
+  def self.path
+    return File.realpath(File.dirname(__FILE__))
+  end
+  
   #A hash that contains links between Ruby object IDs and the PHP object IDs. It can be read because the proxy-objects adds their data to it.
   attr_reader :object_ids
   
