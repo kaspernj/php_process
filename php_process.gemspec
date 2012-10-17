@@ -5,11 +5,11 @@
 
 Gem::Specification.new do |s|
   s.name = %q{php_process}
-  s.version = "0.0.10"
+  s.version = "0.0.11"
 
   s.required_rubygems_version = Gem::Requirement.new(">= 0") if s.respond_to? :required_rubygems_version=
   s.authors = ["Kasper Johansen"]
-  s.date = %q{2012-08-10}
+  s.date = %q{2012-10-17}
   s.description = %q{Spawns a PHP process and proxies calls to it, making it possible to proxy objects and more.}
   s.email = %q{k@spernj.org}
   s.extra_rdoc_files = [
