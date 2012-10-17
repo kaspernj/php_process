@@ -151,6 +151,7 @@ describe "PhpProcess" do
     
     #Send argument 'kasper' which will be what "$callback_from_php" will be changed to.
     func.call("kasper")
+    sleep 0.1
     raise "Expected callback from PHP to change variable but it didnt: '#{$callback_from_php}'." if $callback_from_php != "kasper"
     
     
@@ -160,6 +161,29 @@ describe "PhpProcess" do
     $php.flush_unset_ids(true)
     cache_info2 = $php.object_cache_info
     raise "Cache count should be below #{cache_info1["count"]} but it wasnt: #{cache_info2}." if cache_info2["count"] >= cache_info1["count"]
+    
+    
+    #Test thread-safety and more.
+    ts = []
+    1.upto(25) do |tcount|
+      ts << Thread.new do
+        str = $php.func("substr", "Kasper Johansen", 0, 100)
+        
+        0.upto(250) do
+          kasper_str = $php.func("substr", str, 0, 6)
+          johansen_str = $php.func("substr", str, 7, 15)
+          
+          raise "Expected 'Kasper' but got '#{kasper_str}'." if kasper_str != "Kasper"
+          raise "Expected 'Johansen' but got '#{johansen_str}'." if johansen_str != "Johansen"
+          
+          STDOUT.print "."
+        end
+      end
+    end
+    
+    ts.each do |t|
+      t.join
+    end
     
     
     #Destroy the object.

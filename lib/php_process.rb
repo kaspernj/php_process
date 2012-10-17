@@ -3,6 +3,7 @@ require "tsafe" if !Kernel.const_defined?(:Tsafe)
 require "php-serialize4ruby"
 require "base64"
 require "open3"
+require "thread"
 
 #This class starts a PHP-process and proxies various calls to it. It also spawns proxy-objects, which can you can call like they were normal Ruby-objects.
 #===Examples
@@ -37,6 +38,7 @@ class Php_process
     @args = args
     @debug = @args[:debug]
     @send_count = 0
+    @send_mutex = Mutex.new
     
     @responses = Tsafe::MonHash.new
     
@@ -276,12 +278,16 @@ class Php_process
   def send_real(hash)
     $stderr.print "Sending: #{hash[:args]}\n" if @debug and hash[:args]
     str = Base64.strict_encode64(PHP.serialize(hash))
-    @stdin.write("send:#{@send_count}:#{str}\n")
-    id = @send_count
-    @send_count += 1
     
-    #Slep a tiny bit to wait for first answer.
-    sleep 0.001
+    #Find new ID for the send-request.
+    id = nil
+    @send_mutex.synchronize do
+      id = @send_count
+      @send_count += 1
+    end
+    
+    @responses[id] = Queue.new
+    @stdin.write("send:#{id}:#{str}\n")
     
     #Then return result.
     return read_result(id)
@@ -289,23 +295,12 @@ class Php_process
   
   #Searches for a result for a ID and returns it. Runs 'check_alive' to see if the process should be interrupted.
   def read_result(id)
-    loop do
-      if @responses.key?(id)
-        resp = @responses[id]
-        @responses.delete(id)
-        
-        if resp.is_a?(Hash) and resp["type"] == "error"
-          raise "#{resp["msg"]}\n\n#{resp["bt"]}"
-        end
-        
-        $stderr.print "Found answer #{id} - returning it.\n" if @debug
-        return read_parsed_data(resp)
-      end
-      
-      check_alive
-      sleep 0.01
-      $stderr.print "Waiting for answer to ID: #{id}\n" if @debug
-    end
+    $stderr.print "Waiting for answer to ID: #{id}\n" if @debug
+    resp = @responses[id].pop
+    @responses.delete(id)
+    raise "#{resp["msg"]}\n\n#{resp["bt"]}" if resp.is_a?(Hash) and resp["type"] == "error"
+    $stderr.print "Found answer #{id} - returning it.\n" if @debug
+    return read_parsed_data(resp)
   end
   
   #Checks if something is wrong. Maybe stdout got closed or a fatal error appeared on stderr?
@@ -357,7 +352,7 @@ class Php_process
           $stderr.print "Received: #{id}:#{type}:#{args}\n" if @debug
           
           if type == "answer"
-            @responses[id] = args
+            @responses[id].push(args)
           elsif type == "send"
             if args["type"] == "call_back_created_func"
               Thread.new do
