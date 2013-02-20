@@ -287,7 +287,17 @@ class Php_process
     end
     
     @responses[id] = Queue.new
-    @stdin.write("send:#{id}:#{str}\n")
+    
+    begin
+      @stdin.write("send:#{id}:#{str}\n")
+    rescue Errno::EPIPE => e
+      #Wait for fatal error and then throw it.
+      Thread.pass
+      check_alive
+      
+      #Or just throw the normal error.
+      raise e
+    end
     
     #Then return result.
     return read_result(id)
@@ -296,7 +306,20 @@ class Php_process
   #Searches for a result for a ID and returns it. Runs 'check_alive' to see if the process should be interrupted.
   def read_result(id)
     $stderr.print "Waiting for answer to ID: #{id}\n" if @debug
-    resp = @responses[id].pop
+    check_alive
+    
+    begin
+      resp = @responses[id].pop
+    rescue Exception => e
+      if e.class.name == "fatal"
+        #Wait for fatal error to be registered through thread and then throw it.
+        Thread.pass
+        check_alive
+      end
+      
+      raise e
+    end
+    
     @responses.delete(id)
     raise "#{resp["msg"]}\n\n#{resp["bt"]}" if resp.is_a?(Hash) and resp["type"] == "error"
     $stderr.print "Found answer #{id} - returning it.\n" if @debug
@@ -305,7 +328,7 @@ class Php_process
   
   #Checks if something is wrong. Maybe stdout got closed or a fatal error appeared on stderr?
   def check_alive
-    raise "stdout closed." if @stdout and @stdout.closed?
+    raise "stdout closed." if !@stdout or @stdout.closed?
     raise @fatal if @fatal
   end
   

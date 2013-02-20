@@ -329,7 +329,38 @@ class php_process{
       "created_functions" => count($this->created_functions)
     ));
   }
+  
+  //Makes errors being thrown as exceptions instead.
+  function error_handler($errno, $errmsg, $filename, $linenum, $vars, $args = null){
+    $errortypes = array (  
+      E_ERROR => 'Error',  
+      E_WARNING => 'Warning',  
+      E_PARSE => 'Parsing Error',  
+      E_NOTICE => 'Notice',  
+      E_CORE_ERROR => 'Core Error',  
+      E_CORE_WARNING => 'Core Warning',  
+      E_COMPILE_ERROR => 'Compile Error',  
+      E_COMPILE_WARNING => 'Compile Warning',  
+      E_USER_ERROR => 'User Error',  
+      E_USER_WARNING => 'User Warning',  
+      E_USER_NOTICE => 'User Notice',  
+      E_STRICT => 'Runtime Notice'  
+    );
+    
+    if ($errno == E_STRICT or $errno == E_NOTICE){
+      return null;
+    }
+    
+    throw new exception("Error " . $errortypes[$errno] . ": " . $errmsg . " in \"" . $filename . ":" . $linenum);
+  }
 }
 
+//Spawn the main object.
 $php_process = new php_process();
+
+//Set error-level and make warnings and errors being thrown as exceptions.
+set_error_handler(array($php_process, "error_handler"));
+error_reporting(E_ALL ^ E_NOTICE ^ E_STRIC);
+
+//Start listening for instructions from host process.
 $php_process->start_listening();
