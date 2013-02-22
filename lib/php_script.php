@@ -3,6 +3,21 @@
 
 //Controls the PHP-process on the PHP-side.
 class php_process{
+  private $errortypes = array (  
+    E_ERROR => 'Error',  
+    E_WARNING => 'Warning',  
+    E_PARSE => 'Parsing Error',  
+    E_NOTICE => 'Notice',  
+    E_CORE_ERROR => 'Core Error',  
+    E_CORE_WARNING => 'Core Warning',  
+    E_COMPILE_ERROR => 'Compile Error',  
+    E_COMPILE_WARNING => 'Compile Warning',  
+    E_USER_ERROR => 'User Error',  
+    E_USER_WARNING => 'User Warning',  
+    E_USER_NOTICE => 'User Notice',  
+    E_STRICT => 'Runtime Notice'  
+  );
+  
   //Opens stdin and stdout for processing. Sets various helper-variables.
   function __construct(){
     $this->sock_stdin = fopen("php://stdin", "r");
@@ -63,6 +78,8 @@ class php_process{
       }else{
         throw new exception("Invalid type: " . $type);
       }
+    }catch(php_process_native_ruby_exception $e){
+      $this->answer($id, array("type" => "error", "msg" => $e->getMessage(), "bt" => $e->getTraceAsString(), "ruby_type" => $e->ruby_exc_name));
     }catch(exception $e){
       $this->answer($id, array("type" => "error", "msg" => $e->getMessage(), "bt" => $e->getTraceAsString()));
     }
@@ -210,6 +227,10 @@ class php_process{
       
       $res = eval($eval_str);
     }else{
+      if (!function_exists($args["func_name"])){
+        throw new php_process_native_ruby_exception("Method does not exist: '" . $args["func_name"] . "'.", "NoMethodError");
+      }
+      
       $res = call_user_func_array($args["func_name"], $newargs);
     }
     
@@ -258,9 +279,9 @@ class php_process{
     $call_arr = array($args["class_name"], $args["method_name"]);
     
     if (!class_exists($args["class_name"])){
-      throw new exception("Class does not exist: '" . $args["class_name"] . "'.");
+      throw new php_process_native_ruby_exception("Class does not exist: '" . $args["class_name"] . "'.", "NameError");
     }elseif(!method_exists($args["class_name"], $args["method_name"])){
-      throw new exception("Such a static method does not exist: " . $args["class_name"] . "::" . $args["method_name"] . "()");
+      throw new php_process_native_ruby_exception("Such a static method does not exist: " . $args["class_name"] . "::" . $args["method_name"] . "()", "NoMethodError");
     }elseif(!is_callable($call_arr)){
       throw new exception("Invalid class-name (" . $args["class_name"] . ") or method-name (" . $args["method_name"] . "). It was not callable.");
     }
@@ -332,26 +353,21 @@ class php_process{
   
   //Makes errors being thrown as exceptions instead.
   function error_handler($errno, $errmsg, $filename, $linenum, $vars, $args = null){
-    $errortypes = array (  
-      E_ERROR => 'Error',  
-      E_WARNING => 'Warning',  
-      E_PARSE => 'Parsing Error',  
-      E_NOTICE => 'Notice',  
-      E_CORE_ERROR => 'Core Error',  
-      E_CORE_WARNING => 'Core Warning',  
-      E_COMPILE_ERROR => 'Compile Error',  
-      E_COMPILE_WARNING => 'Compile Warning',  
-      E_USER_ERROR => 'User Error',  
-      E_USER_WARNING => 'User Warning',  
-      E_USER_NOTICE => 'User Notice',  
-      E_STRICT => 'Runtime Notice'  
-    );
-    
     if ($errno == E_STRICT or $errno == E_NOTICE){
       return null;
     }
     
-    throw new exception("Error " . $errortypes[$errno] . ": " . $errmsg . " in \"" . $filename . ":" . $linenum);
+    throw new exception("Error " . $this->errortypes[$errno] . ": " . $errmsg . " in \"" . $filename . ":" . $linenum);
+  }
+}
+
+class php_process_native_ruby_exception extends exception{
+  public $msg;
+  public $ruby_exc_name;
+  
+  function __construct($msg, $ruby_exc_name){
+    parent::__construct($msg);
+    $this->ruby_exc_name = $ruby_exc_name;
   }
 }
 

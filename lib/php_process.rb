@@ -11,6 +11,9 @@ require "thread"
 # print "PID of PHP-process: #{php.func("getmypid")}\n"
 # print "Explode test: #{php.func("explode", ";", "1;2;3;4;5")}\n"
 class Php_process
+  class FatalError < RuntimeError; end
+  class DestroyedError < RuntimeError; end
+  
   #Returns the path to the gem.
   def self.path
     return File.realpath(File.dirname(__FILE__))
@@ -135,9 +138,9 @@ class Php_process
   def destroy
     @thread.kill if @thread
     @err_thread.kill if @err_thread
-    @stdout.close if @stdout
-    @stdin.close if @stdin
-    @stderr.close if @stderr
+    @stdout.close if @stdout and !@stdout.closed?
+    @stdin.close if @stdin and !@stdin.closed?
+    @stderr.close if @stderr and !@stderr.closed?
     @thread = nil
     @err_thread = nil
     @fatal = nil
@@ -149,8 +152,15 @@ class Php_process
     @debug = nil
   end
   
+  #Returns the if the object has been destroyed.
+  def destroyed?
+    return true if !@args
+    return false
+  end
+  
   #Proxies to 'send_real' but calls 'flush_unset_ids' first.
   def send(hash)
+    raise DestroyedError if self.destroyed?
     self.flush_unset_ids
     return send_real(hash)
   end
@@ -213,7 +223,7 @@ class Php_process
   #===Examples
   # php.flush_unset_ids(true)
   def flush_unset_ids(force = false)
-    return nil if !force and @object_unset_ids.length < 500
+    return nil if self.destroyed? or (!force and @object_unset_ids.length < 500)
     while @object_unset_ids.length > 0 and elements = @object_unset_ids.shift(500)
       $stderr.print "Sending unsets: #{elements}\n" if @debug
       send_real("type" => "unset_ids", "ids" => elements)
@@ -321,7 +331,24 @@ class Php_process
     end
     
     @responses.delete(id)
-    raise "#{resp["msg"]}\n\n#{resp["bt"]}" if resp.is_a?(Hash) and resp["type"] == "error"
+    
+    if resp.is_a?(Hash) and resp["type"] == "error" and resp.key?("msg") and resp.key?("bt")
+      begin
+        raise Kernel.const_get(resp["ruby_type"]).new(resp["msg"]) if resp.key?("ruby_type")
+        raise resp["msg"]
+      rescue => e
+        #This adds the PHP-backtrace to the Ruby-backtrace, so it looks like it is part of the same application, which is kind of is.
+        php_bt = []
+        resp["bt"].split("\n").each do |resp_bt|
+          php_bt << resp_bt.gsub(/\A#(\d+)\s+/, "")
+        end
+        
+        #Rethrow exception with combined backtrace.
+        e.set_backtrace(php_bt + e.backtrace)
+        raise e
+      end
+    end
+    
     $stderr.print "Found answer #{id} - returning it.\n" if @debug
     return read_parsed_data(resp)
   end
@@ -329,7 +356,13 @@ class Php_process
   #Checks if something is wrong. Maybe stdout got closed or a fatal error appeared on stderr?
   def check_alive
     raise "stdout closed." if !@stdout or @stdout.closed?
-    raise @fatal if @fatal
+    
+    if @fatal
+      fatal = @fatal
+      @fatal = nil
+      self.destroy
+      raise FatalError.new(@fatal)
+    end
   end
   
   #Parses special hashes to proxy-objects and leaves the rest. This is used automatically.
