@@ -1,6 +1,35 @@
-= php_process
+= PHP-Process
 
-Description goes here.
+This project helps developers use PHP libraries or extensions directly from Ruby. It was originally made in order to allow me to use the exellent PHPExcel directly in Ruby, but it can be used
+with any library or extension.
+
+It works be spawning a PHP-process and then manipulating that to execute commands. For that reason there is an overhead by using it.
+
+Here is a small example:
+  require "rubygems"
+  require "php_process"
+  
+  Php_process.new do |php|
+    php.func("require_once", "#{File.dirname(__FILE__)}/PHPExcel/PHPExcel.php")
+    objPHPExcel = php.new("PHPExcel")
+    
+    objPHPExcel.getProperties.setCreator("Kasper Johansen")
+    objPHPExcel.getProperties.setLastModifiedBy("Kasper Johansen")
+    objPHPExcel.getProperties.setTitle("Office 2007 XLSX Test Document")
+    objPHPExcel.getProperties.setSubject("Office 2007 XLSX Test Document")
+    objPHPExcel.getProperties.setDescription("Test document for Office 2007 XLSX, generated using PHP classes.")
+    
+    objPHPExcel.setActiveSheetIndex(0)
+    objPHPExcel.getActiveSheet.SetCellValue('A1', 'Hello')
+    objPHPExcel.getActiveSheet.SetCellValue('B2', 'world!')
+    objPHPExcel.getActiveSheet.SetCellValue('C1', 'Hello')
+    objPHPExcel.getActiveSheet.SetCellValue('D2', 'world!')
+    
+    objPHPExcel.getActiveSheet.setTitle('Simple')
+    
+    objWriter = php.new("PHPExcel_Writer_Excel2007", objPHPExcel)
+    objWriter.save(__FILE__.gsub(".rb", ".xlsx"))
+  end
 
 == Contributing to php_process
  
