@@ -5,6 +5,7 @@ source "http://rubygems.org"
 gem "php-serialize4ruby"
 gem "wref"
 gem "tsafe"
+gem "string-cases"
 
 # Add dependencies to develop your gem here.
 # Include everything needed to run rake, tests, features, etc.

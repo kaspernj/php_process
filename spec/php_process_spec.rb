@@ -53,7 +53,7 @@ describe "PhpProcess" do
       
       
       #Test spawn require and method-calling on objects.
-      php.func("require_once", "knj/http.php")
+      raise "Could not load HTTP framework." if !php.func("include_once", "knj/http.php")
       http = php.new("knj_httpbrowser")
       http.connect("www.partyworm.dk")
       resp = http.get("/?show=frontpage")
@@ -62,8 +62,8 @@ describe "PhpProcess" do
       
       
       #Test Table-Writer.
-      php.func("require_once", "knj/table_writer.php")
-      php.func("require_once", "knj/csv.php")
+      php.func("include_once", "knj/table_writer.php")
+      php.func("include_once", "knj/csv.php")
       tw = php.new("knj_table_writer", {
         "filepath" => "/tmp/php_process_test.csv",
         "format" => "csv",
@@ -81,6 +81,14 @@ describe "PhpProcess" do
       cache_info2 = php.object_cache_info
       raise "Cache count should be below #{cache_info1["count"]} but it wasnt: #{cache_info2}." if cache_info2["count"] >= cache_info1["count"]
     end
+  end
+  
+  it "should be able to report fatal errors" do
+    expect{
+      Php_process.new(:debug => false, :debug_output => false, :debug_stderr => false) do |php|
+        php.func(:require_once, "file_that_doesnt_exist.php")
+      end
+    }.to raise_error(Php_process::FatalError)
   end
   
   it "should be able to create functions and call them" do
@@ -153,8 +161,8 @@ describe "PhpProcess" do
   it "should be able to load advanced libraries and do stuff with them (PHPExcel)" do
     Php_process.new(:debug => false, :debug_stderr => true) do |php|
       #Test PHPExcel.
-      php.func("require_once", "PHPExcel.php")
-      php.func("require_once", "knj/table_writer.php")
+      php.func("include_once", "PHPExcel.php")
+      php.func("include_once", "knj/table_writer.php")
       
       tw = php.new("knj_table_writer", {
         "filepath" => "/tmp/php_process_test.xlsx",

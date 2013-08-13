@@ -4,6 +4,7 @@ require "php-serialize4ruby"
 require "base64"
 require "open3"
 require "thread"
+require "string-cases"
 
 #This class starts a PHP-process and proxies various calls to it. It also spawns proxy-objects, which can you can call like they were normal Ruby-objects.
 #===Examples
@@ -11,8 +12,14 @@ require "thread"
 # print "PID of PHP-process: #{php.func("getmypid")}\n"
 # print "Explode test: #{php.func("explode", ";", "1;2;3;4;5")}\n"
 class Php_process
-  class FatalError < RuntimeError; end
-  class DestroyedError < RuntimeError; end
+  #Autoloader for subclasses.
+  def self.const_missing(name)
+    path = "#{File.dirname(__FILE__)}/../include/#{::StringCases.camel_to_snake(name)}.rb"
+    raise LoadError, "Does not exist: '#{path}'." unless File.exists?(path)
+    require path
+    raise LoadError, "Still not defined after autoload: '#{name}'." unless Php_process.const_defined?(name)
+    return Php_process.const_get(name)
+  end
   
   #Returns the path to the gem.
   def self.path
@@ -37,9 +44,15 @@ class Php_process
   #===Examples
   #If you want debugging printed to stderr:
   # php = Php_process.new(:debug => true)
+  INITIALIZE_VALID_ARGS = [:debug, :debug_output, :debug_stderr, :cmd_php, :on_err]
   def initialize(args = {})
+    args.each do |key, val|
+      raise "Invalid argument: '#{key}'." unless INITIALIZE_VALID_ARGS.include?(key)
+    end
+    
     @args = args
     @debug = @args[:debug]
+    @debug_output = @args[:debug_output]
     @send_count = 0
     @send_mutex = Mutex.new
     
@@ -56,13 +69,28 @@ class Php_process
     @callbacks_count = 0
     @callbacks_mutex = Mutex.new
     
+    bin_path_tries = [
+      "/usr/bin/php5",
+      "/usr/bin/php"
+    ]
+    
+    cmd_str = ""
+    
     if @args[:cmd_php]
-      cmd_str = "#{@args[:cmd_php]} "
+      cmd_str = "#{@args[:cmd_php]}"
     else
-      cmd_str = "/usr/bin/env php5 "
+      bin_path_tries.each do |bin_path|
+        next unless File.exists?(bin_path)
+        cmd_str << bin_path
+        break
+      end
+      
+      if cmd_str.empty? && File.exists?("/usr/bin/env")
+        cmd_str = "/usr/bin/env php5"
+      end
     end
     
-    cmd_str << "\"#{File.dirname(__FILE__)}/php_script.php\""
+    cmd_str << " \"#{File.dirname(__FILE__)}/php_script.php\""
     
     if RUBY_ENGINE == "jruby"
       pid, @stdin, @stdout, @stderr = IO.popen4(cmd_str)
@@ -72,6 +100,7 @@ class Php_process
     
     @stdout.sync = true
     @stdin.sync = true
+    @stderr.sync = true
     
     @stdin.set_encoding("iso-8859-1:utf-8")
     #@stderr.set_encoding("utf-8:iso-8859-1")
@@ -83,15 +112,14 @@ class Php_process
           @args[:on_err].call(str) if @args[:on_err]
           $stderr.print "Process error: #{str}" if @debug or @args[:debug_stderr]
           
-          if str.match(/^PHP Fatal error: (.+)\s*/)
-            @fatal = str.strip
-          elsif str.match(/^Killed\s*$/)
-            @fatal = "Process was killed."
-          end
+          check_for_special(str.to_s)
           
           break if (!@args and str.to_s.strip.length <= 0) or (@stderr and @stderr.closed?)
         end
+        
+        $stderr.puts "stderr thread died!" if @debug
       rescue => e
+        $stderr.puts "Error while reading from stderr."
         $stderr.puts e.inspect
         $stderr.puts e.backtrace
       end
@@ -108,7 +136,11 @@ class Php_process
       $stderr.print "Line gotten while waiting: #{line}" if @debug
     end
     
-    raise "PHP process wasnt started." if !started
+    if !started
+      stderr_output = @stderr.read
+      raise "PHP process wasnt started: #{stderr_output}"
+    end
+    
     check_alive
     
     $stderr.print "PHP-script ready.\n" if @debug
@@ -143,7 +175,6 @@ class Php_process
     @stderr.close if @stderr and !@stderr.closed?
     @thread = nil
     @err_thread = nil
-    @fatal = nil
     @responses = nil
     @object_ids = nil
     @object_unset_ids = nil
@@ -208,7 +239,7 @@ class Php_process
     func = nil
     @callbacks_mutex.synchronize do
       callback_id = @callbacks_count
-      func = Php_process::Created_function.new(:php => self, :id => callback_id)
+      func = Php_process::CreatedFunction.new(:php => self, :id => callback_id)
       @callbacks[callback_id] = {:block => block, :func => func, :id => callback_id}
       @callbacks_count += 1
     end
@@ -235,9 +266,9 @@ class Php_process
   
   #Parses argument-data into special hashes that can be used on the PHP-side. It is public because the proxy-objects uses it. Normally you would never use it.
   def parse_data(data)
-    if data.is_a?(Php_process::Proxy_obj)
+    if data.is_a?(Php_process::ProxyObject)
       return {:type => :proxyobj, :id => data.args[:id]}
-    elsif data.is_a?(Php_process::Created_function)
+    elsif data.is_a?(Php_process::CreatedFunction)
       return {:type => :php_process_created_function, :id => data.args[:id]}
     elsif data.is_a?(Hash)
       newhash = {}
@@ -287,7 +318,7 @@ class Php_process
   #Generates the command from the given object and sends it to the PHP-process. Then returns the parsed result.
   def send_real(hash)
     $stderr.print "Sending: #{hash[:args]}\n" if @debug and hash[:args]
-    str = Base64.strict_encode64(PHP.serialize(hash))
+    str = ::Base64.strict_encode64(::PHP.serialize(hash))
     
     #Find new ID for the send-request.
     id = nil
@@ -296,7 +327,7 @@ class Php_process
       @send_count += 1
     end
     
-    @responses[id] = Queue.new
+    @responses[id] = ::Queue.new
     
     begin
       @stdin.write("send:#{id}:#{str}\n")
@@ -315,15 +346,19 @@ class Php_process
   
   #Searches for a result for a ID and returns it. Runs 'check_alive' to see if the process should be interrupted.
   def read_result(id)
-    $stderr.print "Waiting for answer to ID: #{id}\n" if @debug
+    $stderr.print "php_process: Waiting for answer to ID: #{id}\n" if @debug
     check_alive
     
     begin
       resp = @responses[id].pop
     rescue Exception => e
-      if e.class.name == "fatal"
+      if e.class.name.to_s == "fatal"
+        $stderr.puts "php_process: Deadlock error detected." if @debug
+        
         #Wait for fatal error to be registered through thread and then throw it.
+        sleep 0.2
         Thread.pass
+        $stderr.puts "php_process: Checking for alive." if @debug
         check_alive
       end
       
@@ -334,8 +369,8 @@ class Php_process
     
     if resp.is_a?(Hash) and resp["type"] == "error" and resp.key?("msg") and resp.key?("bt")
       begin
-        raise Kernel.const_get(resp["ruby_type"]).new(resp["msg"]) if resp.key?("ruby_type")
-        raise resp["msg"]
+        raise ::Kernel.const_get(resp["ruby_type"]), resp["msg"] if resp.key?("ruby_type")
+        raise PhpError, resp["msg"]
       rescue => e
         #This adds the PHP-backtrace to the Ruby-backtrace, so it looks like it is part of the same application, which is kind of is.
         php_bt = []
@@ -358,10 +393,9 @@ class Php_process
     raise "stdout closed." if !@stdout or @stdout.closed?
     
     if @fatal
-      fatal = @fatal
-      @fatal = nil
+      $stderr.puts "php_process: Throwing fatal error for: #{caller}" if @debug
       self.destroy
-      raise FatalError.new(@fatal)
+      raise FatalError, @fatal
     end
   end
   
@@ -375,7 +409,7 @@ class Php_process
         return proxy_obj
       else
         $stderr.print "Spawn new proxy-obj!\n" if @debug
-        proxy_obj = Proxy_obj.new(
+        proxy_obj = Php_process::ProxyObject.new(
           :php => self,
           :id => id
         )
@@ -399,10 +433,20 @@ class Php_process
     @thread = Thread.new do
       begin
         @stdout.lines do |line|
-          break if line == nil or @stdout.closed?
+          STDOUT.puts "Line: #{line}" if @debug_output
+          
+          if line.to_s.strip.empty? || @stdout.closed?
+            $stderr.puts "Got empty line from process - skipping: #{line}" if @debug
+            next
+          elsif check_for_special(line.to_s)
+            check_alive
+          end
           
           data = line.split(":")
-          args = PHP.unserialize(Base64.strict_decode64(data[2].strip))
+          raise "Data was not an array." unless data.is_a?(Array)
+          raise "Didn't contain any data: #{data}" if data[2].to_s.empty?
+          
+          args = ::PHP.unserialize(::Base64.strict_decode64(data[2].to_s.strip))
           type = data[0]
           id = data[1].to_i
           $stderr.print "Received: #{id}:#{type}:#{args}\n" if @debug
@@ -416,6 +460,7 @@ class Php_process
                   func_d = @callbacks[args["func_id"].to_i]
                   func_d[:block].call(*args["args"])
                 rescue => e
+                  $stderr.puts "Error while calling in thread."
                   $stderr.puts e.inspect
                   $stderr.puts e.backtrace
                 end
@@ -425,87 +470,26 @@ class Php_process
             raise "Unknown type: '#{type}'."
           end
         end
+        
+        $stderr.puts "php_process: Read-loop stopped." if @debug
       rescue => e
+        $stderr.puts "Error in read-loop-thread."
         $stderr.puts e.inspect
         $stderr.puts e.backtrace
       end
     end
   end
-end
-
-#This object proxies calls to the object it refers to on the PHP-side. It is automatically spawned from "php.new" and should not be spawned manually.
-#===Examples
-# php = Php_process.new
-# pe = php.new("PHPExcel")
-# pe.getProperties.setCreator("kaspernj")
-class Php_process::Proxy_obj
-  #Contains the various data about the object like ID and class. It is readable because it needs to be converted to special hashes when used as arguments.
-  attr_reader :args
   
-  #Sets required instance-variables and defines the finalizer for unsetting on the PHP-side.
-  def initialize(args)
-    @args = args
-    @args[:php].object_ids[self.__id__] = @args[:id]
-    
-    #Define finalizer so we can remove the object on PHPs side, when it is collected on the Ruby-side.
-    ObjectSpace.define_finalizer(self, @args[:php].method(:objects_unsetter))
-  end
-  
-  #Returns the PHP-class of the object that this object refers to as a symbol.
-  #===Examples
-  # proxy_obj.__phpclass #=> :PHPExcel
-  def __phpclass
-    return @args[:php].func("get_class", self)
-  end
-  
-  #Sets an instance-variable on the object.
-  #===Examples
-  # proxy_obj = php.new("stdClass")
-  # proxy_obj.__set_var("testvar", 5)
-  # proxy_obj.__get_var("testvar") #=> 5
-  def __set_var(name, val)
-    @args[:php].send(:type => "set_var", :id => @args[:id], :name => name, :val => val)
-    return nil
-  end
-  
-  #Returns an instance-variable by name.
-  #===Examples
-  # proxy_obj = php.new("stdClass")
-  # proxy_obj.__set_var("testvar", 5)
-  # proxy_obj.__get_var("testvar") #=> 5
-  def __get_var(name)
-    return @args[:php].send(:type => "get_var", :id => @args[:id], :name => name)
-  end
-  
-  #Uses 'method_missing' to proxy all other calls onto the PHP-process and the PHP-object. Then returns the parsed result.
-  def method_missing(method_name, *args)
-    return @args[:php].send(:type => :object_call, :method => method_name, :args => @args[:php].parse_data(args), :id => @args[:id])
-  end
-end
-
-#This class handels the ability to create functions on the PHP-side.
-#===Examples
-# $callback_from_php = "test"
-# func = php.create_func do |arg|
-#   $callback_from_php = arg
-# end
-#
-# $callback_from_php #=> "test"
-# func.call('test2')
-# $callback_from_php #=> "test2"
-#
-# The function could also be called from PHP, but for debugging purposes it can also be done from Ruby.
-class Php_process::Created_function
-  #Various data about the create function will can help identify it on both the Ruby and PHP-side.
-  attr_reader :args
-  
-  #Sets the data. This is done from "Php_process" automatically.
-  def initialize(args)
-    @args = args
-  end
-  
-  #Asks PHP to execute the function on the PHP-side, which will trigger the callback in Ruby afterwards. This method is useually called for debugging purposes.
-  def call(*args)
-    @args[:php].send(:type => :call_created_func, :id => @args[:id], :args => @args[:php].parse_data(args))
+  # Checks the given string for special input like when a fatal error occurred or the sub-process is killed off.
+  def check_for_special(str)
+    if str.match(/^(PHP |)Fatal error: (.+)\s*/)
+      $stderr.puts "Fatal error detected: #{str}" if @debug
+      @fatal = str.strip
+      return true
+    elsif str.match(/^Killed\s*$/)
+      $stderr.puts "Killed error detected: #{str}" if @debug
+      @fatal = "Process was killed."
+      return true
+    end
   end
 end

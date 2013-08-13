@@ -376,7 +376,7 @@ $php_process = new php_process();
 
 //Set error-level and make warnings and errors being thrown as exceptions.
 set_error_handler(array($php_process, "error_handler"));
-error_reporting(E_ALL ^ E_NOTICE ^ E_STRIC);
+error_reporting(E_ALL ^ E_WARNING ^ E_NOTICE ^ E_STRICT);
 
 //Start listening for instructions from host process.
 $php_process->start_listening();

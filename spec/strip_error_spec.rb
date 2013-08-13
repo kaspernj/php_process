@@ -5,7 +5,7 @@ require File.expand_path(File.dirname(__FILE__) + '/spec_helper')
 describe "PhpProcess" do
   it "should not do the strip error when errors occur" do
     Php_process.new(:debug => false) do |php|
-      php.func("require_once", "PHPExcel.php")
+      php.func("include_once", "PHPExcel.php")
       php.static("PHPExcel_IOFactory", "load", "#{File.dirname(__FILE__)}/../examples/example_phpexcel.xlsx")
       
       100.times do
