@@ -72,15 +72,14 @@ class PhpProcess
       @stdin, @stdout, @stderr = Open3.popen3(php_cmd_as_string)
     end
     
-    @stdout.sync = true
     @stdin.sync = true
-    @stderr.sync = true
-    
     @stdin.set_encoding("iso-8859-1:utf-8")
-    #@stderr.set_encoding("utf-8:iso-8859-1")
+    
+    @stdout.sync = true
     @stdout.set_encoding("utf-8:iso-8859-1")
     
-    start_error_reader_thread
+    @stderr_handler = ::PhpProcess::StderrHandler.new(:stderr => @stderr, :php_process => self)
+    
     start_out_reader_thread
     check_alive
     $stderr.print "PHP-script ready.\n" if @debug
@@ -138,7 +137,7 @@ class PhpProcess
   #===Examples
   # print php.eval("array(1 => 2);") #=> {1=>2}
   def eval(eval_str)
-    return self.send(:type => :eval, :eval_str => eval_str)
+    return send(:type => :eval, :eval_str => eval_str)
   end
   
   #Spawns a new object from a given class with given arguments and returns it.
@@ -146,7 +145,7 @@ class PhpProcess
   # pe = php.new("PHPExcel")
   # pe.getProperties.setCreator("kaspernj")
   def new(classname, *args)
-    return self.send(:type => :new, :class => classname, :args => parse_data(args))
+    return send(:type => :new, :class => classname, :args => parse_data(args))
   end
   
   #Call a function in PHP.
@@ -155,14 +154,14 @@ class PhpProcess
   # pid_of_php_process = php.func("getmypid")
   # php.func("require_once", "PHPExcel.php")
   def func(func_name, *args)
-    return self.send(:type => :func, :func_name => func_name, :args => parse_data(args))
+    return send(:type => :func, :func_name => func_name, :args => parse_data(args))
   end
   
   #Sends a call to a static method on a class with given arguments.
   #===Examples
   # php.static("Gtk", "main_quit")
   def static(class_name, method_name, *args)
-    return self.send(:type => :static_method_call, :class_name => class_name, :method_name => method_name, :args => parse_data(args))
+    return send(:type => :static_method_call, :class_name => class_name, :method_name => method_name, :args => parse_data(args))
   end
   
   #Creates a function on the PHP-side. When the function is called, it callbacks to the Ruby-side which then can execute stuff back to PHP.
@@ -271,27 +270,6 @@ private
     end
   end
   
-  def start_error_reader_thread
-    @err_thread = Thread.new do
-      begin
-        @stderr.each_line do |str|
-          @args[:on_err].call(str) if @args[:on_err]
-          $stderr.print "Process error: #{str}" if @debug or @args[:debug_stderr]
-          check_alive if check_for_special(str.to_s)
-          break if (!@args && str.to_s.strip.empty?) || (@stderr && @stderr.closed?)
-        end
-        
-        $stderr.puts "stderr thread died!" if @debug
-      rescue => e
-        unless destroyed?
-          $stderr.puts "Error while reading from stderr."
-          $stderr.puts e.inspect
-          $stderr.puts e.backtrace
-        end
-      end
-    end
-  end
-  
   def php_cmd_as_string
     bin_path_tries = [
       "/usr/bin/php5",
@@ -371,32 +349,34 @@ private
     end
   end
   
-  def check_response_for_error(resp)
-    # Errors are pushed in case of fatals and destroys to avoid deadlock.
-    raise resp if resp.is_a?(Exception)
-    
-    if resp.is_a?(Hash) && resp["type"] == "error" && resp.key?("msg") && resp.key?("bt")
-      begin
-        raise ::Kernel.const_get(resp["ruby_type"]), resp["msg"] if resp.key?("ruby_type")
-        raise PhpError, resp["msg"]
-      rescue => e
-        # This adds the PHP-backtrace to the Ruby-backtrace, so it looks like it is part of the same application, which is kind of is.
-        php_bt = []
-        resp["bt"].split("\n").each do |resp_bt|
-          php_bt << resp_bt.gsub(/\A#(\d+)\s+/, "")
-        end
-        
-        # Rethrow exception with combined backtrace.
-        e.set_backtrace(php_bt + e.backtrace)
-        raise e
+  def generate_php_error(resp)
+    begin
+      raise ::Kernel.const_get(resp["ruby_type"]), resp["msg"] if resp.key?("ruby_type")
+      raise PhpError, resp["msg"]
+    rescue => e
+      # This adds the PHP-backtrace to the Ruby-backtrace, so it looks like it is part of the same application, which is kind of is.
+      php_bt = []
+      resp["bt"].split("\n").each do |resp_bt|
+        php_bt << resp_bt.gsub(/\A#(\d+)\s+/, "")
       end
+      
+      # Rethrow exception with combined backtrace.
+      e.set_backtrace(php_bt + e.backtrace)
+      raise e
     end
   end
   
   #Searches for a result for a ID and returns it. Runs 'check_alive' to see if the process should be interrupted.
   def read_result(id)
     resp = wait_for_and_read_response(id)
-    check_response_for_error(resp)
+    
+    # Errors are pushed in case of fatals and destroys to avoid deadlock.
+    raise resp if resp.is_a?(Exception)
+    
+    if resp.is_a?(Hash) && resp["type"] == "error" && resp.key?("msg") && resp.key?("bt")
+      generate_php_error(resp)
+    end
+    
     $stderr.print "Found answer #{id} - returning it.\n" if @debug
     return read_parsed_data(resp)
   end
@@ -450,28 +430,6 @@ private
     end
   end
   
-  def parse_line(line)
-    STDOUT.puts "Line: #{line}" if @debug_output
-    
-    if line.to_s.strip.empty? || @stdout.closed?
-      $stderr.puts "Got empty line from process - skipping: #{line}" if @debug
-      return :next
-    elsif check_for_special(line.to_s)
-      check_alive
-    end
-    
-    data = line.split(":")
-    raise "Data was not an array." unless data.is_a?(Array)
-    raise "Didn't contain any data: #{data}" if data[2].to_s.empty?
-    args = ::PHP.unserialize(::Base64.strict_decode64(data[2].to_s.strip))
-    
-    return {
-      :type => data[0],
-      :id => data[1].to_i,
-      :args => args
-    }
-  end
-  
   def spawn_call_back_created_func(args)
     Thread.new do
       begin
@@ -503,7 +461,7 @@ private
   
   def read_loop
     @stdout.each_line do |line|
-      parsed = parse_line(line)
+      parsed = parse_line(line.to_s)
       next if parsed == :next
       id, type, args = parsed[:id], parsed[:type], parsed[:args]
       $stderr.print "Received: #{id}:#{type}:#{args}\n" if @debug
@@ -518,16 +476,30 @@ private
     end
   end
   
+  def parse_line(line)
+    if line.strip.empty? || @stdout.closed?
+      $stderr.puts "Got empty line from process - skipping: #{line}" if @debug
+      return :next
+    end
+    
+    check_for_special(line)
+    data = line.split(":")
+    raise "Didn't contain any data: #{data}" if !data[2] || data[2].empty?
+    args = ::PHP.unserialize(::Base64.strict_decode64(data[2].strip))
+    
+    return {:type => data[0], :id => data[1].to_i, :args => args}
+  end
+  
   # Checks the given string for special input like when a fatal error occurred or the sub-process is killed off.
   def check_for_special(str)
     if str.match(/^(PHP |)Fatal error: (.+)\s*/)
       $stderr.puts "Fatal error detected: #{str}" if @debug
       @fatal = str.strip
-      return true
+      check_alive
     elsif str.match(/^Killed\s*$/)
       $stderr.puts "Killed error detected: #{str}" if @debug
       @fatal = "Process was killed."
-      return true
+      check_alive
     end
   end
 end
