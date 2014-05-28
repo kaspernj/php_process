@@ -1,7 +1,7 @@
 [![Build Status](https://travis-ci.org/kaspernj/php_process.svg?branch=master)](https://travis-ci.org/kaspernj/php_process)
 [![Code Climate](https://codeclimate.com/github/kaspernj/php_process.png)](https://codeclimate.com/github/kaspernj/php_process)
 
-# PHP-Process
+# PhpProcess
 
 This project helps developers use PHP libraries or extensions directly from Ruby. It was originally made in order to allow me to use the exellent PHPExcel directly in Ruby, but it can be used
 with any library or extension.
@@ -35,6 +35,40 @@ PhpProcess.new do |php|
   objWriter.save(__FILE__.gsub(".rb", ".xlsx"))
 end
 ```
+
+#Usage
+## Eval'ing PHP-code
+```ruby
+number = php.eval("return 5")
+```
+
+## Getting and calling instances of objects.
+```ruby
+instance = php.new(:ClassName, "FirstArgument")
+result = instance.someMethod("AnArgument")
+```
+
+## Calling static methods.
+```ruby
+php.static(:ClassName, :methodName, "firstArgumentForMethodInPHP")
+```
+
+## Setting variables on objects.
+```ruby
+instance.__set_var(:varName, "varValue")
+instance.__get_var(:varName).should eq "varValue"
+```
+
+## Getting constants.
+```ruby
+php.constant_val("CONSTANT_NAME")
+```
+
+## Defining constants.
+```ruby
+php.func("define", "TEST_CONSTANT", 5)
+```
+
 
 ## Contributing to php_process
  
