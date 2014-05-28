@@ -14,11 +14,13 @@ require "string-cases"
 class PhpProcess
   #Autoloader for subclasses.
   def self.const_missing(name)
-    path = "#{File.dirname(__FILE__)}/../include/#{::StringCases.camel_to_snake(name)}.rb"
-    raise LoadError, "Does not exist: '#{path}'." unless File.exists?(path)
-    require path
-    raise LoadError, "Still not defined after autoload: '#{name}'." unless ::PhpProcess.const_defined?(name)
-    return ::PhpProcess.const_get(name)
+    path = "#{File.dirname(__FILE__)}/php_process/#{::StringCases.camel_to_snake(name)}.rb"
+    if File.exists?(path)
+      require path
+      return ::PhpProcess.const_get(name) if ::PhpProcess.const_defined?(name)
+    end
+    
+    super
   end
   
   #Returns the path to the gem.
@@ -252,7 +254,7 @@ private
       end
     end
     
-    cmd_str << " \"#{File.dirname(__FILE__)}/php_script.php\""
+    cmd_str << " \"#{File.dirname(__FILE__)}/php_process/php_script.php\""
     
     return cmd_str
   end
