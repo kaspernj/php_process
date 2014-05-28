@@ -489,21 +489,7 @@ private
   def start_read_loop
     @thread = Thread.new do
       begin
-        @stdout.each_line do |line|
-          parsed = parse_line(line)
-          next if parsed == :next
-          id, type, args = parsed[:id], parsed[:type], parsed[:args]
-          $stderr.print "Received: #{id}:#{type}:#{args}\n" if @debug
-          
-          if type == "answer"
-            @responses[id].push(args)
-          elsif type == "send"
-            spawn_call_back_created_func(args) if args["type"] == "call_back_created_func"
-          else
-            raise "Unknown type: '#{type}'."
-          end
-        end
-        
+        read_loop
         $stderr.puts "php_process: Read-loop stopped." if @debug
       rescue => e
         unless destroyed?
@@ -511,6 +497,23 @@ private
           $stderr.puts e.inspect
           $stderr.puts e.backtrace
         end
+      end
+    end
+  end
+  
+  def read_loop
+    @stdout.each_line do |line|
+      parsed = parse_line(line)
+      next if parsed == :next
+      id, type, args = parsed[:id], parsed[:type], parsed[:args]
+      $stderr.print "Received: #{id}:#{type}:#{args}\n" if @debug
+      
+      if type == "answer"
+        @responses[id].push(args)
+      elsif type == "send"
+        spawn_call_back_created_func(args) if args["type"] == "call_back_created_func"
+      else
+        raise "Unknown type: '#{type}'."
       end
     end
   end
