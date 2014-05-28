@@ -10,17 +10,17 @@ class PhpProcess::ProxyObject
   #Sets required instance-variables and defines the finalizer for unsetting on the PHP-side.
   def initialize(args)
     @args = args
-    @args[:php].object_ids[self.__id__] = @args[:id]
+    @args[:objects_handler].object_ids[self.__id__] = @args[:id]
     
     #Define finalizer so we can remove the object on PHPs side, when it is collected on the Ruby-side.
-    ObjectSpace.define_finalizer(self, @args[:php].method(:objects_unsetter))
+    ObjectSpace.define_finalizer(self, @args[:objects_handler].method(:objects_unsetter))
   end
   
   #Returns the PHP-class of the object that this object refers to as a symbol.
   #===Examples
   # proxy_obj.__phpclass #=> :PHPExcel
   def __phpclass
-    return @args[:php].func("get_class", self)
+    return @args[:php_process].func("get_class", self)
   end
   
   #Sets an instance-variable on the object.
@@ -29,7 +29,7 @@ class PhpProcess::ProxyObject
   # proxy_obj.__set_var("testvar", 5)
   # proxy_obj.__get_var("testvar") #=> 5
   def __set_var(name, val)
-    @args[:php].send(:type => "set_var", :id => @args[:id], :name => name, :val => val)
+    @args[:communicator].communicate(:type => "set_var", :id => @args[:id], :name => name, :val => val)
     return nil
   end
   
@@ -39,11 +39,11 @@ class PhpProcess::ProxyObject
   # proxy_obj.__set_var("testvar", 5)
   # proxy_obj.__get_var("testvar") #=> 5
   def __get_var(name)
-    return @args[:php].send(:type => "get_var", :id => @args[:id], :name => name)
+    return @args[:communicator].communicate(:type => "get_var", :id => @args[:id], :name => name)
   end
   
   #Uses 'method_missing' to proxy all other calls onto the PHP-process and the PHP-object. Then returns the parsed result.
   def method_missing(method_name, *args)
-    return @args[:php].send(:type => :object_call, :method => method_name, :args => @args[:php].parse_data(args), :id => @args[:id])
+    return @args[:communicator].communicate(:type => :object_call, :method => method_name, :args => @args[:php_process].parse_data(args), :id => @args[:id])
   end
 end

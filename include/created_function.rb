@@ -21,6 +21,10 @@ class PhpProcess::CreatedFunction
   
   #Asks PHP to execute the function on the PHP-side, which will trigger the callback in Ruby afterwards. This method is useually called for debugging purposes.
   def call(*args)
-    @args[:php].send(:type => :call_created_func, :id => @args[:id], :args => @args[:php].parse_data(args))
+    @args[:communicator].communicate(
+      :type => :call_created_func,
+      :id => @args[:id],
+      :args => @args[:php_process].parse_data(args)
+    )
   end
 end
