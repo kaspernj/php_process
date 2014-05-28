@@ -3,7 +3,7 @@ rvm:
   - ruby-1.9.3-p484
 
 before_script:
-  - apt-get install php5-cli
+  - sudo apt-get install php5-cli
 
 notifications:
   email: false
