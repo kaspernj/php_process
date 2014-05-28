@@ -1,3 +1,3 @@
-class Php_process::PhpError < RuntimeError
+class PhpProcess::PhpError < RuntimeError
   attr_accessor :php_class
 end

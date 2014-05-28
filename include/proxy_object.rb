@@ -1,9 +1,9 @@
 #This object proxies calls to the object it refers to on the PHP-side. It is automatically spawned from "php.new" and should not be spawned manually.
 #===Examples
-# php = Php_process.new
+# php = PhpProcess.new
 # pe = php.new("PHPExcel")
 # pe.getProperties.setCreator("kaspernj")
-class Php_process::ProxyObject
+class PhpProcess::ProxyObject
   #Contains the various data about the object like ID and class. It is readable because it needs to be converted to special hashes when used as arguments.
   attr_reader :args
   

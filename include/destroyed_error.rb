@@ -1,3 +1,3 @@
-class Php_process::DestroyedError < RuntimeError
+class PhpProcess::DestroyedError < RuntimeError
   
 end

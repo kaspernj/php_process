@@ -1,10 +1,10 @@
 #!/usr/bin/env ruby
 
 #Remember to install 'php5-cli' like under Ubuntu: apt-get install php5-cli
-#Load 'Php_process' through RubyGems.
+#Load 'PhpProcess' through RubyGems.
 require "rubygems"
 require "php_process"
-php = Php_process.new
+php = PhpProcess.new
 
 #Load PHPExcel (can be downloaded here: 'http://phpexcel.codeplex.com/releases/view/45412')
 php.func("require_once", "#{File.dirname(__FILE__)}/PHPExcel/PHPExcel.php")

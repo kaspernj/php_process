@@ -9,7 +9,7 @@ Here is a small example:
   require "rubygems"
   require "php_process"
   
-  Php_process.new do |php|
+  PhpProcess.new do |php|
     php.func("require_once", "#{File.dirname(__FILE__)}/PHPExcel/PHPExcel.php")
     objPHPExcel = php.new("PHPExcel")
     

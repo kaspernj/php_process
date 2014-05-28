@@ -1,3 +1,3 @@
-class Php_process::FatalError < RuntimeError
+class PhpProcess::FatalError < RuntimeError
   
 end

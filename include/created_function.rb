@@ -10,11 +10,11 @@
 # $callback_from_php #=> "test2"
 #
 # The function could also be called from PHP, but for debugging purposes it can also be done from Ruby.
-class Php_process::CreatedFunction
+class PhpProcess::CreatedFunction
   #Various data about the create function will can help identify it on both the Ruby and PHP-side.
   attr_reader :args
   
-  #Sets the data. This is done from "Php_process" automatically.
+  #Sets the data. This is done from "PhpProcess" automatically.
   def initialize(args)
     @args = args
   end
