@@ -46,6 +46,22 @@ class PhpProcess
   # php = PhpProcess.new(:debug => true)
   INITIALIZE_VALID_ARGS = [:debug, :debug_output, :debug_stderr, :cmd_php, :on_err]
   def initialize(args = {})
+    parse_args_and_set_vars(args)
+    start_php_process
+    check_alive
+    $stderr.puts "PHP-script ready." if @debug
+    start_read_loop
+    
+    if block_given?
+      begin
+        yield(self)
+      ensure
+        self.destroy
+      end
+    end
+  end
+  
+  def parse_args_and_set_vars(args)
     args.each do |key, val|
       raise "Invalid argument: '#{key}'." unless INITIALIZE_VALID_ARGS.include?(key)
     end
@@ -65,7 +81,9 @@ class PhpProcess
     @callbacks = {}
     @callbacks_count = 0
     @callbacks_mutex = Mutex.new
-    
+  end
+  
+  def start_php_process
     if RUBY_ENGINE == "jruby"
       pid, @stdin, @stdout, @stderr = IO.popen4(php_cmd_as_string)
     else
@@ -79,19 +97,7 @@ class PhpProcess
     @stdout.set_encoding("utf-8:iso-8859-1")
     
     @stderr_handler = ::PhpProcess::StderrHandler.new(:stderr => @stderr, :php_process => self)
-    
     start_out_reader_thread
-    check_alive
-    $stderr.print "PHP-script ready.\n" if @debug
-    start_read_loop
-    
-    if block_given?
-      begin
-        yield(self)
-      ensure
-        self.destroy
-      end
-    end
   end
   
   #Returns various info in a hash about the object-cache on the PHP-side.
@@ -230,7 +236,7 @@ class PhpProcess
   def constant_val(name)
     const_name = name.to_s
     
-    if !@constant_val_cache.key?(const_name)
+    unless @constant_val_cache.key?(const_name)
       @constant_val_cache[const_name] = self.send(:type => :constant_val, :name => name)
     end
     
@@ -461,7 +467,7 @@ private
   
   def read_loop
     @stdout.each_line do |line|
-      parsed = parse_line(line.to_s)
+      parsed = parse_line(line.to_s.strip)
       next if parsed == :next
       id, type, args = parsed[:id], parsed[:type], parsed[:args]
       $stderr.print "Received: #{id}:#{type}:#{args}\n" if @debug
@@ -477,7 +483,7 @@ private
   end
   
   def parse_line(line)
-    if line.strip.empty? || @stdout.closed?
+    if line.empty? || @stdout.closed?
       $stderr.puts "Got empty line from process - skipping: #{line}" if @debug
       return :next
     end
