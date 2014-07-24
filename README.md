@@ -1,5 +1,6 @@
 [![Build Status](https://travis-ci.org/kaspernj/php_process.svg?branch=master)](https://travis-ci.org/kaspernj/php_process)
 [![Code Climate](https://codeclimate.com/github/kaspernj/php_process.png)](https://codeclimate.com/github/kaspernj/php_process)
+[![Test Coverage](https://codeclimate.com/github/kaspernj/php_process/coverage.png)](https://codeclimate.com/github/kaspernj/php_process)
 
 # PhpProcess
 
