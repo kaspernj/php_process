@@ -1,5 +1,6 @@
-[![Build Status](https://travis-ci.org/kaspernj/php_process.svg?branch=master)](https://travis-ci.org/kaspernj/php_process)
-[![Code Climate](https://codeclimate.com/github/kaspernj/php_process.png)](https://codeclimate.com/github/kaspernj/php_process)
+[![Build Status](https://api.shippable.com/projects/540e7b9d3479c5ea8f9ec239/badge?branchName=master)](https://app.shippable.com/projects/540e7b9d3479c5ea8f9ec239/builds/latest)
+[![Code Climate](https://codeclimate.com/github/kaspernj/php_process/badges/gpa.svg)](https://codeclimate.com/github/kaspernj/php_process)
+[![Test Coverage](https://codeclimate.com/github/kaspernj/php_process/badges/coverage.svg)](https://codeclimate.com/github/kaspernj/php_process)
 
 # PhpProcess
 
@@ -16,21 +17,21 @@ require "php_process"
 PhpProcess.new do |php|
   php.func("require_once", "#{File.dirname(__FILE__)}/PHPExcel/PHPExcel.php")
   objPHPExcel = php.new("PHPExcel")
-  
+
   objPHPExcel.getProperties.setCreator("Kasper Johansen")
   objPHPExcel.getProperties.setLastModifiedBy("Kasper Johansen")
   objPHPExcel.getProperties.setTitle("Office 2007 XLSX Test Document")
   objPHPExcel.getProperties.setSubject("Office 2007 XLSX Test Document")
   objPHPExcel.getProperties.setDescription("Test document for Office 2007 XLSX, generated using PHP classes.")
-  
+
   objPHPExcel.setActiveSheetIndex(0)
   objPHPExcel.getActiveSheet.SetCellValue('A1', 'Hello')
   objPHPExcel.getActiveSheet.SetCellValue('B2', 'world!')
   objPHPExcel.getActiveSheet.SetCellValue('C1', 'Hello')
   objPHPExcel.getActiveSheet.SetCellValue('D2', 'world!')
-  
+
   objPHPExcel.getActiveSheet.setTitle('Simple')
-  
+
   objWriter = php.new("PHPExcel_Writer_Excel2007", objPHPExcel)
   objWriter.save(__FILE__.gsub(".rb", ".xlsx"))
 end
@@ -71,7 +72,7 @@ php.func("define", "TEST_CONSTANT", 5)
 
 
 ## Contributing to php_process
- 
+
 * Check out the latest master to make sure the feature hasn't been implemented or the bug hasn't been fixed yet.
 * Check out the issue tracker to make sure someone already hasn't requested it and/or contributed it.
 * Fork the project.
