@@ -7,7 +7,7 @@
 This project helps developers use PHP libraries or extensions directly from Ruby. It was originally made in order to allow me to use the exellent PHPExcel directly in Ruby, but it can be used
 with any library or extension.
 
-It works be spawning a PHP-process and then manipulating that to execute commands. For that reason there is an overhead by using it.
+It works by spawning a PHP-process and then manipulating that to execute commands. For that reason there is an overhead by using it.
 
 Here is a small example:
 ```ruby
