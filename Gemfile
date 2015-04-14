@@ -3,7 +3,7 @@ source "http://rubygems.org"
 # Example:
 #   gem "activesupport", ">= 2.3.5"
 gem "php-serialize4ruby"
-gem "wref"
+gem "wref", ">= 0.0.8"
 gem "tsafe"
 gem "string-cases"
 
