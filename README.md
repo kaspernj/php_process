@@ -61,6 +61,9 @@ instance.__get_var(:varName).should eq "varValue"
 ```
 
 ## Getting constants.
+
+Calling constants this way will cache them on the Ruby side. We don't expect them to change.
+
 ```ruby
 php.constant_val("CONSTANT_NAME")
 ```
