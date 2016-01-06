@@ -1,6 +1,6 @@
-[![Build Status](https://api.shippable.com/projects/540e7b9d3479c5ea8f9ec239/badge?branchName=master)](https://app.shippable.com/projects/540e7b9d3479c5ea8f9ec239/builds/latest)
 [![Code Climate](https://codeclimate.com/github/kaspernj/php_process/badges/gpa.svg)](https://codeclimate.com/github/kaspernj/php_process)
 [![Test Coverage](https://codeclimate.com/github/kaspernj/php_process/badges/coverage.svg)](https://codeclimate.com/github/kaspernj/php_process)
+[![Build Status](https://img.shields.io/shippable/540e7b9d3479c5ea8f9ec239.svg)](https://app.shippable.com/projects/540e7b9d3479c5ea8f9ec239/builds/latest)
 
 # PhpProcess
 
