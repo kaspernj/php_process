@@ -38,6 +38,12 @@ end
 ```
 
 #Usage
+
+## Using a custom path for PHP CLI
+```ruby
+PhpProcess.new(cmd_php: "some/path/php") do |php|
+```
+
 ## Eval'ing PHP-code
 ```ruby
 number = php.eval("return 5")
