@@ -1,5 +1,5 @@
 class PhpProcess::ObjectsHandler
-  #A hash that contains links between Ruby object IDs and the PHP object IDs. It can be read because the proxy-objects adds their data to it.
+  # A hash that contains links between Ruby object IDs and the PHP object IDs. It can be read because the proxy-objects adds their data to it.
   attr_reader :object_ids
   attr_accessor :communicator
 
@@ -11,7 +11,7 @@ class PhpProcess::ObjectsHandler
     @objects = Wref::Map.new
   end
 
-  #This object controls which IDs should be unset on the PHP-side by being a destructor on the Ruby-side.
+  # This object controls which IDs should be unset on the PHP-side by being a destructor on the Ruby-side.
   def objects_unsetter(id)
     obj_count_id = @object_ids[id]
 
@@ -22,17 +22,18 @@ class PhpProcess::ObjectsHandler
     @object_ids.delete(id)
   end
 
-  #This flushes the unset IDs to the PHP-process and frees memory. This is automatically called if 500 IDs are waiting to be flushed. Normally you would not need or have to call this manually.
+  # This flushes the unset IDs to the PHP-process and frees memory.
+  # This is automatically called if 500 IDs are waiting to be flushed. Normally you would not need or have to call this manually.
   #===Examples
   # php.flush_unset_ids(true)
   def flush_unset_ids(force = false)
     return nil if @php_process.destroyed? || (!force && @object_unset_ids.length < 500)
-    while @object_unset_ids.length > 0 and elements = @object_unset_ids.shift(500)
+    while @object_unset_ids.length > 0 && (elements = @object_unset_ids.shift(500))
       $stderr.print "Sending unsets: #{elements}\n" if @debug
       @communicator.__send__(:communicate_real, "type" => "unset_ids", "ids" => elements)
     end
 
-    #Clean wref-map.
+    # Clean wref-map.
     @objects.clean
   end
 

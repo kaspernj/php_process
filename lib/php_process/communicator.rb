@@ -15,11 +15,11 @@ class PhpProcess::Communicator
     start_read_loop
   end
 
-  #Proxies to 'communicate_real' but calls 'flush_unset_ids' first.
+  # Proxies to 'communicate_real' but calls 'flush_unset_ids' first.
   def communicate(hash)
     raise ::PhpProcess::DestroyedError if @php_process.destroyed?
     @objects_handler.flush_unset_ids
-    return communicate_real(hash)
+    communicate_real(hash)
   end
 
   def check_alive
@@ -28,7 +28,7 @@ class PhpProcess::Communicator
       @fatal = nil
       error = ::PhpProcess::FatalError.new(message)
 
-      @responses.each do |id, queue|
+      @responses.each do |_id, queue|
         queue.push(error)
       end
 
@@ -36,7 +36,7 @@ class PhpProcess::Communicator
       @php_process.destroy
     elsif @php_process.destroyed?
       error = ::PhpProcess::DestroyedError.new
-      @responses.each do |id, queue|
+      @responses.each do |_id, queue|
         queue.push(error)
       end
 
@@ -48,11 +48,11 @@ class PhpProcess::Communicator
 
   # Checks the given string for special input like when a fatal error occurred or the sub-process is killed off.
   def check_for_special(str)
-    if str.match(/^(PHP |)Fatal error: (.+)\s*/)
+    if str =~ /^(PHP |)Fatal error: (.+)\s*/
       $stderr.puts "Fatal error detected: #{str}" if @debug
       @fatal = str.strip
       check_alive
-    elsif str.match(/^Killed\s*$/)
+    elsif str =~ /^Killed\s*$/
       $stderr.puts "Killed error detected: #{str}" if @debug
       @fatal = "Process was killed."
       check_alive
@@ -61,12 +61,12 @@ class PhpProcess::Communicator
 
 private
 
-  #Generates the command from the given object and sends it to the PHP-process. Then returns the parsed result.
+  # Generates the command from the given object and sends it to the PHP-process. Then returns the parsed result.
   def communicate_real(hash)
-    $stderr.print "Sending: #{hash[:args]}\n" if @debug and hash[:args]
+    $stderr.print "Sending: #{hash[:args]}\n" if @debug && hash[:args]
     str = ::Base64.strict_encode64(::PHP.serialize(hash))
 
-    #Find new ID for the communicate-request.
+    # Find new ID for the communicate-request.
     id = nil
     @send_mutex.synchronize do
       id = @send_count
@@ -78,16 +78,16 @@ private
     begin
       @stdin.write("send:#{id}:#{str}\n")
     rescue Errno::EPIPE, IOError => e
-      #Wait for fatal error and then throw it.
+      # Wait for fatal error and then throw it.
       Thread.pass
       check_alive
 
-      #Or just throw the normal error.
+      # Or just throw the normal error.
       raise e
     end
 
-    #Then return result.
-    return read_result(id)
+    # Then return result.
+    read_result(id)
   end
 
   def wait_for_and_read_response(id)
@@ -100,37 +100,35 @@ private
       if e.class.name.to_s == "fatal"
         $stderr.puts "php_process: Deadlock error detected." if @debug
 
-        #Wait for fatal error to be registered through thread and then throw it.
+        # Wait for fatal error to be registered through thread and then throw it.
         sleep 0.2
         Thread.pass
         $stderr.puts "php_process: Checking for alive." if @debug
         check_alive
       end
 
-      raise e
+      raise
     ensure
       @responses.delete(id)
     end
   end
 
   def generate_php_error(resp)
-    begin
-      raise ::Kernel.const_get(resp["ruby_type"]), resp["msg"] if resp.key?("ruby_type")
-      raise ::PhpProcess::PhpError, resp["msg"]
-    rescue => e
-      # This adds the PHP-backtrace to the Ruby-backtrace, so it looks like it is part of the same application, which is kind of is.
-      php_bt = []
-      resp["bt"].split("\n").each do |resp_bt|
-        php_bt << resp_bt.gsub(/\A#(\d+)\s+/, "")
-      end
-
-      # Rethrow exception with combined backtrace.
-      e.set_backtrace(php_bt + e.backtrace)
-      raise e
+    raise ::Kernel.const_get(resp["ruby_type"]), resp["msg"] if resp.key?("ruby_type")
+    raise ::PhpProcess::PhpError, resp["msg"]
+  rescue => e
+    # This adds the PHP-backtrace to the Ruby-backtrace, so it looks like it is part of the same application, which is kind of is.
+    php_bt = []
+    resp["bt"].split("\n").each do |resp_bt|
+      php_bt << resp_bt.gsub(/\A#(\d+)\s+/, "")
     end
+
+    # Rethrow exception with combined backtrace.
+    e.set_backtrace(php_bt + e.backtrace)
+    raise e
   end
 
-  #Searches for a result for a ID and returns it. Runs 'check_alive' to see if the process should be interrupted.
+  # Searches for a result for a ID and returns it. Runs 'check_alive' to see if the process should be interrupted.
   def read_result(id)
     resp = wait_for_and_read_response(id)
 
@@ -142,15 +140,15 @@ private
     end
 
     $stderr.print "Found answer #{id} - returning it.\n" if @debug
-    return read_parsed_data(resp)
+    read_parsed_data(resp)
   end
 
-  #Parses special hashes to proxy-objects and leaves the rest. This is used automatically.
+  # Parses special hashes to proxy-objects and leaves the rest. This is used automatically.
   def read_parsed_data(data)
     if data.is_a?(Array) && data.length == 2 && data[0] == "proxyobj"
       id = data[1].to_i
 
-      if proxy_obj = @objects_handler.find_by_id(id)
+      if (proxy_obj = @objects_handler.find_by_id(id))
         $stderr.print "Reuse proxy-obj!\n" if @debug
         return proxy_obj
       else
@@ -175,14 +173,24 @@ private
     end
 
     check_for_special(line)
-    data = line.split(":")
+
+    match = line.match(/\A(.*?)%\{\{php_process:begin\}\}(.+)%\{\{php_process:end\}\}\Z/)
+
+    if match && match[1] && !match[1].empty?
+      $stdout.print "[php_process] #{match[1]}"
+    elsif !match
+      $stdout.puts "[php_process] #{line}"
+      return :next
+    end
+
+    data = match[2].split(":")
     raise "Didn't contain any data: #{data}" if !data[2] || data[2].empty?
     args = ::PHP.unserialize(::Base64.strict_decode64(data[2].strip))
 
-    return {type: data[0], id: data[1].to_i, args: args}
+    {type: data[0], id: data[1].to_i, args: args}
   end
 
-  #Starts the thread which reads answers from the PHP-process. This is called automatically from the constructor.
+  # Starts the thread which reads answers from the PHP-process. This is called automatically from the constructor.
   def start_read_loop
     @thread = Thread.new do
       begin
@@ -202,7 +210,9 @@ private
     @stdout.each_line do |line|
       parsed = parse_line(line.to_s.strip)
       next if parsed == :next
-      id, type, args = parsed[:id], parsed[:type], parsed[:args]
+      id = parsed[:id]
+      type = parsed[:type]
+      args = parsed[:args]
       $stderr.print "Received: #{id}:#{type}:#{args}\n" if @debug
 
       if type == "answer"

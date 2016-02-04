@@ -6,17 +6,17 @@ require "open3"
 require "thread"
 require "string-cases"
 
-#This class starts a PHP-process and proxies various calls to it. It also spawns proxy-objects, which can you can call like they were normal Ruby-objects.
+# This class starts a PHP-process and proxies various calls to it. It also spawns proxy-objects, which can you can call like they were normal Ruby-objects.
 #===Examples
 # php = PhpProcess.new
 # print "PID of PHP-process: #{php.func("getmypid")}\n"
 # print "Explode test: #{php.func("explode", ";", "1;2;3;4;5")}\n"
 class PhpProcess
-  #Autoloader for subclasses.
+  # Autoloader for subclasses.
   def self.const_missing(name)
     path = "#{File.dirname(__FILE__)}/php_process/#{::StringCases.camel_to_snake(name)}.rb"
 
-    if File.exists?(path)
+    if File.exist?(path)
       require path
       return ::PhpProcess.const_get(name) if ::PhpProcess.const_defined?(name)
     end
@@ -24,16 +24,16 @@ class PhpProcess
     super
   end
 
-  #Returns the path to the gem.
+  # Returns the path to the gem.
   def self.path
-    return File.realpath(File.dirname(__FILE__))
+    File.realpath(File.dirname(__FILE__))
   end
 
-  #Spawns various used variables, launches the process and more.
+  # Spawns various used variables, launches the process and more.
   #===Examples
-  #If you want debugging printed to stderr:
+  # If you want debugging printed to stderr:
   # php = PhpProcess.new(debug: true)
-  INITIALIZE_VALID_ARGS = [:debug, :debug_output, :debug_stderr, :cmd_php, :on_err]
+  INITIALIZE_VALID_ARGS = [:debug, :debug_output, :debug_stderr, :cmd_php, :on_err].freeze
   def initialize(args = {})
     parse_args_and_set_vars(args)
     start_php_process
@@ -44,13 +44,13 @@ class PhpProcess
       begin
         yield(self)
       ensure
-        self.destroy
+        destroy
       end
     end
   end
 
   def parse_args_and_set_vars(args)
-    args.each do |key, val|
+    args.each do |key, _val|
       raise "Invalid argument: '#{key}'." unless INITIALIZE_VALID_ARGS.include?(key)
     end
 
@@ -60,7 +60,7 @@ class PhpProcess
     @constant_val_cache = Tsafe::MonHash.new
     @objects_handler = ::PhpProcess::ObjectsHandler.new(php_process: self)
 
-    #Used for 'create_func'.
+    # Used for 'create_func'.
     @callbacks = {}
     @callbacks_count = 0
     @callbacks_mutex = Mutex.new
@@ -89,18 +89,18 @@ class PhpProcess
     @stderr_handler.communicator = @communicator
   end
 
-  #Returns various info in a hash about the object-cache on the PHP-side.
+  # Returns various info in a hash about the object-cache on the PHP-side.
   def object_cache_info
-    return communicate(type: :object_cache_info)
+    communicate(type: :object_cache_info)
   end
 
-  #Joins all the threads.
+  # Joins all the threads.
   def join
     @thread.join if @thread
     @err_thread.join if @err_thread
   end
 
-  #Destroys the object closing and unsetting everything.
+  # Destroys the object closing and unsetting everything.
   def destroy
     @destroyed = true
     @stdout.close if @stdout && !@stdout.closed?
@@ -109,50 +109,50 @@ class PhpProcess
 
     # Respond to any waiting queues to avoid locking those threads.
     if @responses
-      @responses.each do |id, queue|
+      @responses.each do |_id, queue|
         queue.push(::PhpProcess::DestroyedError.new)
       end
     end
   end
 
-  #Returns the if the object has been destroyed.
+  # Returns the if the object has been destroyed.
   def destroyed?
     return true if @destroyed
-    return false
+    false
   end
 
-  #Evaluates a string containing PHP-code and returns the result.
+  # Evaluates a string containing PHP-code and returns the result.
   #===Examples
   # print php.eval("array(1 => 2);") #=> {1=>2}
   def eval(eval_str)
-    return @communicator.communicate(type: :eval, eval_str: eval_str)
+    @communicator.communicate(type: :eval, eval_str: eval_str)
   end
 
-  #Spawns a new object from a given class with given arguments and returns it.
+  # Spawns a new object from a given class with given arguments and returns it.
   #===Examples
   # pe = php.new("PHPExcel")
   # pe.getProperties.setCreator("kaspernj")
   def new(classname, *args)
-    return @communicator.communicate(type: :new, class: classname, args: parse_data(args))
+    @communicator.communicate(type: :new, class: classname, args: parse_data(args))
   end
 
-  #Call a function in PHP.
+  # Call a function in PHP.
   #===Examples
   # arr = php.func("explode", ";", "1;2;3;4;5")
   # pid_of_php_process = php.func("getmypid")
   # php.func("require_once", "PHPExcel.php")
   def func(func_name, *args)
-    return @communicator.communicate(type: :func, func_name: func_name, args: parse_data(args))
+    @communicator.communicate(type: :func, func_name: func_name, args: parse_data(args))
   end
 
-  #Sends a call to a static method on a class with given arguments.
+  # Sends a call to a static method on a class with given arguments.
   #===Examples
   # php.static("Gtk", "main_quit")
   def static(class_name, method_name, *args)
-    return @communicator.communicate(type: :static_method_call, class_name: class_name, method_name: method_name, args: parse_data(args))
+    @communicator.communicate(type: :static_method_call, class_name: class_name, method_name: method_name, args: parse_data(args))
   end
 
-  #Parses argument-data into special hashes that can be used on the PHP-side. It is public because the proxy-objects uses it. Normally you would never use it.
+  # Parses argument-data into special hashes that can be used on the PHP-side. It is public because the proxy-objects uses it. Normally you would never use it.
   def parse_data(data)
     if data.is_a?(PhpProcess::ProxyObject)
       return {type: :proxyobj, id: data.args[:id]}
@@ -177,14 +177,14 @@ class PhpProcess
     end
   end
 
-  #Creates a function on the PHP-side. When the function is called, it callbacks to the Ruby-side which then can execute stuff back to PHP.
+  # Creates a function on the PHP-side. When the function is called, it callbacks to the Ruby-side which then can execute stuff back to PHP.
   #===Examples
   # func = php.create_func do |d|
   #   d.php.static("Gtk", "main_quit")
   # end
   #
   # button.connect("clicked", func)
-  def create_func(args = {}, &block)
+  def create_func(_args = {}, &block)
     callback_id = nil
     func = nil
     @callbacks_mutex.synchronize do
@@ -194,13 +194,13 @@ class PhpProcess
       @callbacks_count += 1
     end
 
-    raise "No callback-ID?" if !callback_id
+    raise "No callback-ID?" unless callback_id
     @communicator.communicate(type: :create_func, callback_id: callback_id)
 
-    return func
+    func
   end
 
-  #Returns the value of a constant on the PHP-side.
+  # Returns the value of a constant on the PHP-side.
   def constant_val(name)
     const_name = name.to_s
 
@@ -208,7 +208,7 @@ class PhpProcess
       @constant_val_cache[const_name] = @communicator.communicate(type: :constant_val, name: name)
     end
 
-    return @constant_val_cache[const_name]
+    @constant_val_cache[const_name]
   end
 
 private
@@ -219,7 +219,7 @@ private
     @stdout.each_line do |line|
       puts "Line: #{line}" if @debug
 
-      if match = line.match(/^php_script_ready:(\d+)\n/)
+      if (match = line.match(/^php_script_ready:(\d+)\n/))
         started = true
         break
       end
@@ -242,22 +242,22 @@ private
     cmd_str = ""
 
     if @args[:cmd_php]
-      cmd_str = "#{@args[:cmd_php]}"
+      cmd_str = (@args[:cmd_php]).to_s
     else
       bin_path_tries.each do |bin_path|
-        next unless File.exists?(bin_path)
+        next unless File.exist?(bin_path)
         cmd_str << bin_path
         break
       end
 
-      if cmd_str.empty? && File.exists?("/usr/bin/env")
+      if cmd_str.empty? && File.exist?("/usr/bin/env")
         cmd_str = "/usr/bin/env php5"
       end
     end
 
     cmd_str << " \"#{File.dirname(__FILE__)}/php_process/php_script.php\""
 
-    return cmd_str
+    cmd_str
   end
 
   def spawn_call_back_created_func(args)

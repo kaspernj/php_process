@@ -4,11 +4,11 @@ archive: true
 rvm:
   - ruby-2.1.2
   - ruby-1.9.3-head
-  - jruby-head
 before_script:
   - sudo apt-get update
   - sudo apt-get install php5-cli
 script:
   - CODECLIMATE_REPO_TOKEN=d388156debf9e8c47dc04bd00e0edeefb7d3b9b3c1506304359271d9efe1f714 bundle exec rspec
+  - bundle exec rubocop
 notifications:
   email: false
