@@ -28,7 +28,7 @@ class PhpProcess::Communicator
       @fatal = nil
       error = ::PhpProcess::FatalError.new(message)
 
-      @responses.each do |_id, queue|
+      @responses.each_value do |queue|
         queue.push(error)
       end
 
@@ -36,7 +36,7 @@ class PhpProcess::Communicator
       @php_process.destroy
     elsif @php_process.destroyed?
       error = ::PhpProcess::DestroyedError.new
-      @responses.each do |_id, queue|
+      @responses.each_value do |queue|
         queue.push(error)
       end
 
@@ -95,8 +95,8 @@ private
     check_alive
 
     begin
-      resp = @responses[id].pop
-    rescue Exception => e
+      @responses[id].pop
+    rescue Exception => e # rubocop:disable Lint/RescueException
       if e.class.name.to_s == "fatal"
         $stderr.puts "php_process: Deadlock error detected." if @debug
 
@@ -114,12 +114,12 @@ private
   end
 
   def generate_php_error(resp)
-    raise ::Kernel.const_get(resp["ruby_type"]), resp["msg"] if resp.key?("ruby_type")
-    raise ::PhpProcess::PhpError, resp["msg"]
+    raise ::Kernel.const_get(resp.fetch("ruby_type")), resp.fetch("msg") if resp.key?("ruby_type")
+    raise ::PhpProcess::PhpError, resp.fetch("msg")
   rescue => e
     # This adds the PHP-backtrace to the Ruby-backtrace, so it looks like it is part of the same application, which is kind of is.
     php_bt = []
-    resp["bt"].split("\n").each do |resp_bt|
+    resp.fetch("bt").split("\n").each do |resp_bt|
       php_bt << resp_bt.gsub(/\A#(\d+)\s+/, "")
     end
 
@@ -135,7 +135,7 @@ private
     # Errors are pushed in case of fatals and destroys to avoid deadlock.
     raise resp if resp.is_a?(Exception)
 
-    if resp.is_a?(Hash) && resp["type"] == "error" && resp.key?("msg") && resp.key?("bt")
+    if resp.is_a?(Hash) && resp["type"] == "exception" && resp.key?("msg") && resp.key?("bt")
       generate_php_error(resp)
     end
 
@@ -218,6 +218,7 @@ private
       if type == "answer"
         @responses[id].push(args)
       elsif type == "send"
+        @php_process.show_php_error(args) if args["type"] == "php_error"
         @php_process.__send__(:spawn_call_back_created_func, args) if args["type"] == "call_back_created_func"
       else
         raise "Unknown type: '#{type}'."

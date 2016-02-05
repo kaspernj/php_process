@@ -49,8 +49,6 @@ class php_process{
     if (!fwrite($this->sock_stdout, "%{{php_process:begin}}send:" . $id . ":" . $data_packed . "%{{php_process:end}}\n")){
       throw new exception("Could not write to stdout.");
     }
-
-    //return $this->read_answer($id);
   }
 
   //Handles the given instruction. It parses it and then calls the relevant method.
@@ -79,9 +77,9 @@ class php_process{
         throw new exception("Invalid type: " . $type);
       }
     }catch(php_process_native_ruby_exception $e){
-      $this->answer($id, array("type" => "error", "msg" => $e->getMessage(), "bt" => $e->getTraceAsString(), "ruby_type" => $e->ruby_exc_name));
+      $this->answer($id, array("type" => "exception", "msg" => $e->getMessage(), "bt" => $e->getTraceAsString(), "ruby_type" => $e->ruby_exc_name));
     }catch(exception $e){
-      $this->answer($id, array("type" => "error", "msg" => $e->getMessage(), "bt" => $e->getTraceAsString()));
+      $this->answer($id, array("type" => "exception", "msg" => $e->getMessage(), "bt" => $e->getTraceAsString()));
     }
   }
 
@@ -352,12 +350,21 @@ class php_process{
   }
 
   //Makes errors being thrown as exceptions instead.
-  function error_handler($errno, $errmsg, $filename, $linenum, $vars, $args = null){
-    if ($errno == E_STRICT or $errno == E_NOTICE){
+  function error_handler($error_number, $error_message, $file_name, $line_number, $vars, $args = null){
+    if ($error_number == E_STRICT || $error_number == E_NOTICE || $error_number == E_WARNING){
+      $this->send(array(
+        "type" => "php_error",
+        "error_message" => $error_message,
+        "error_type" => $this->errortypes[$error_number],
+        "file_name" => $file_name,
+        "line_number" => $line_number,
+        "backtrace" => debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS)
+      ));
+
       return null;
     }
 
-    throw new exception("Error " . $this->errortypes[$errno] . ": " . $errmsg . " in \"" . $filename . ":" . $linenum);
+    throw new exception("Error " . $this->errortypes[$error_number] . ": " . $error_message . " in \"" . $file_name . ":" . $line_number);
   }
 }
 

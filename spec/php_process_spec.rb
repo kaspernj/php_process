@@ -184,4 +184,20 @@ describe "PhpProcess" do
 
     expect(out.string).to eq "[php_process] Hello world!\n"
   end
+
+  it "shouldn't raise warnings as exceptions but pass them by to stderr" do
+    err = StringIO.new
+    old_stderr = $stderr
+    $stderr = err
+
+    begin
+      PhpProcess.new do |php|
+        php.func(:unlink, "path/that/doesnt/exist")
+      end
+    ensure
+      $stderr = old_stderr
+    end
+
+    expect(err.string).to include "PHP Warning: unlink(path/that/doesnt/exist): No such file or directory"
+  end
 end

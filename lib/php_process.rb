@@ -50,7 +50,7 @@ class PhpProcess
   end
 
   def parse_args_and_set_vars(args)
-    args.each do |key, _val|
+    args.each_key do |key|
       raise "Invalid argument: '#{key}'." unless INITIALIZE_VALID_ARGS.include?(key)
     end
 
@@ -68,7 +68,7 @@ class PhpProcess
 
   def start_php_process
     if RUBY_ENGINE == "jruby"
-      pid, @stdin, @stdout, @stderr = IO.popen4(php_cmd_as_string)
+      _pid, @stdin, @stdout, @stderr = IO.popen4(php_cmd_as_string)
     else
       @stdin, @stdout, @stderr = Open3.popen3(php_cmd_as_string)
     end
@@ -108,10 +108,10 @@ class PhpProcess
     @stderr.close if @stderr && !@stderr.closed?
 
     # Respond to any waiting queues to avoid locking those threads.
-    if @responses
-      @responses.each do |_id, queue|
-        queue.push(::PhpProcess::DestroyedError.new)
-      end
+    return unless @responses
+
+    @responses.each_values do |queue|
+      queue.push(::PhpProcess::DestroyedError.new)
     end
   end
 
@@ -211,6 +211,27 @@ class PhpProcess
     @constant_val_cache[const_name]
   end
 
+  def show_php_error(args)
+    # The file name and line number is not shown, because it will by the "php_script.php" which doesn't work out.
+    $stderr.puts "PHP #{args.fetch("error_type")}: #{args.fetch("error_message")}"
+
+    args.fetch("backtrace").each do |backtrace|
+      line = ""
+
+      if backtrace["file"] && backtrace["line"]
+        line << "#{backtrace.fetch("file")}:#{backtrace.fetch("line")}:in "
+      end
+
+      if backtrace["class"] && backtrace["type"]
+        line << "#{backtrace.fetch("class")}#{backtrace.fetch("type")}"
+      end
+
+      line << "`#{backtrace.fetch("function")}'"
+
+      $stderr.puts line
+    end
+  end
+
 private
 
   def check_php_process_startup
@@ -219,7 +240,7 @@ private
     @stdout.each_line do |line|
       puts "Line: #{line}" if @debug
 
-      if (match = line.match(/^php_script_ready:(\d+)\n/))
+      if line =~ /^php_script_ready:(\d+)\n/
         started = true
         break
       end
@@ -227,10 +248,10 @@ private
       $stderr.print "Line gotten while waiting: #{line}" if @debug
     end
 
-    unless started
-      stderr_output = @stderr.read
-      raise "PHP process wasnt started: #{stderr_output}"
-    end
+    return if started
+
+    stderr_output = @stderr.read
+    raise "PHP process wasnt started: #{stderr_output}"
   end
 
   def php_cmd_as_string
@@ -242,7 +263,7 @@ private
     cmd_str = ""
 
     if @args[:cmd_php]
-      cmd_str = (@args[:cmd_php]).to_s
+      cmd_str = @args.fetch(:cmd_php).to_s
     else
       bin_path_tries.each do |bin_path|
         next unless File.exist?(bin_path)
