@@ -4,7 +4,7 @@ source "http://rubygems.org"
 #   gem "activesupport", ">= 2.3.5"
 gem "php-serialize4ruby"
 gem "wref", ">= 0.0.8"
-gem "tsafe", "0.0.11"
+gem "tsafe", "0.0.12"
 gem "string-cases", "0.0.4"
 
 # Add dependencies to develop your gem here.
