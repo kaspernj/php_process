@@ -60,6 +60,12 @@ result = instance.someMethod("AnArgument")
 php.static(:ClassName, :methodName, "firstArgumentForMethodInPHP")
 ```
 
+## Calling functions.
+```ruby
+image = php.func("ImageCreateFromJPEG", "file_name.jpeg")
+php.func("ImageJPEG", image, "new_file.jpeg", 85)
+```
+
 ## Setting variables on objects.
 ```ruby
 instance.__set_var(:varName, "varValue")
